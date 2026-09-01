@@ -1,30 +1,27 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.InferenceEngine; // Güncellenmiþ kütüphane adý
 using UnityEngine;
-using Unity.Sentis;
 
 public class AIManager : MonoBehaviour
 {
-    [Header("Sentis AI Configuration")]
+    [Header("AI Configuration")]
     [Tooltip("Drag and drop the ai_brain.onnx model here")]
     public ModelAsset onnxModelAsset;
 
     private Model runtimeModel;
-    private IWorker worker;
+    private Worker worker; // IWorker yerine Worker sýnýfý
     private bool isThinking = false;
 
     private void Start()
     {
-        // 1. Load the ONNX model into memory
         runtimeModel = ModelLoader.Load(onnxModelAsset);
-
-        // 2. Initialize the Sentis worker. GPUCompute provides excellent mobile performance.
-        worker = WorkerFactory.CreateWorker(BackendType.GPUCompute, runtimeModel);
+        // WorkerFactory yerine doðrudan Worker objesi oluþturuyoruz
+        worker = new Worker(runtimeModel, BackendType.GPUCompute);
     }
 
     private void Update()
     {
-        // Trigger AI logic only when it's AI's turn and it is not already calculating
         if (GameManager.Instance.currentState == GameState.AITurn && !isThinking)
         {
             StartCoroutine(ThinkAndPlay());
@@ -34,36 +31,34 @@ public class AIManager : MonoBehaviour
     private IEnumerator ThinkAndPlay()
     {
         isThinking = true;
-
-        // Artificial delay for better UX (prevent instant moves)
         yield return new WaitForSeconds(GameManager.Instance.gameSettings.aiThinkingDelay);
 
-        List<MoveData> validMoves = GetAllValidCombinations(1); // 1 represents the AI ID
+        List<MoveData> validMoves = GetAllValidCombinations(1);
 
         if (validMoves.Count == 0)
         {
             isThinking = false;
-            yield break; // Handled by GameManager (Loss condition)
+            yield break;
         }
 
         float bestScore = -Mathf.Infinity;
         MoveData bestMove = validMoves[0];
 
-        // Evaluate all possible moves using the Neural Network
         foreach (MoveData move in validMoves)
         {
-            int[,] simulatedBoard = SimulateMove(GameManager.Instance.board, 1, move.movePos, move.removePos);
+            int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
             float[] flatBoard = FlattenBoard(simulatedBoard);
 
-            // 'using' block ensures Tensors are disposed immediately to prevent memory leaks
-            using TensorFloat inputTensor = new TensorFloat(new TensorShape(1, 49), flatBoard);
+            // TensorFloat yerine Tensor<float> kullanýyoruz
+            using Tensor<float> inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard);
 
-            worker.Execute(inputTensor);
+            // Execute yerine Schedule
+            worker.Schedule(inputTensor);
 
-            using TensorFloat outputTensor = worker.PeekOutput() as TensorFloat;
+            using Tensor<float> outputTensor = worker.PeekOutput() as Tensor<float>;
 
-            // Extract the prediction score from the Sentis tensor array
-            float[] outputData = outputTensor.ToReadOnlyArray();
+            // Veriyi okumak için DownloadToArray kullanýlýyor
+            float[] outputData = outputTensor.DownloadToArray();
             float score = outputData[0];
 
             if (score > bestScore)
@@ -73,13 +68,9 @@ public class AIManager : MonoBehaviour
             }
         }
 
-        // Execute the chosen optimal move
         GameManager.Instance.ExecuteTurn(1, bestMove.movePos, bestMove.removePos);
-
         isThinking = false;
     }
-
-    // --- HELPER STRUCTS & METHODS ---
 
     private struct MoveData
     {
@@ -101,7 +92,7 @@ public class AIManager : MonoBehaviour
             {
                 for (int c = 0; c < size; c++)
                 {
-                    bool isEmpty = GameManager.Instance.board[r, c] == 0;
+                    bool isEmpty = GameManager.Instance[r, c] == 0;
                     bool isOldSpot = (r == currentPos.x && c == currentPos.y);
                     bool isNewSpot = (r == movePos.x && c == movePos.y);
 
@@ -151,7 +142,6 @@ public class AIManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        // Sentis Requirement: Memory must be explicitly released when the script dies
         worker?.Dispose();
     }
 }
