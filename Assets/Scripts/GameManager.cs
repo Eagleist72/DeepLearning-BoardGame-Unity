@@ -18,6 +18,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Game State")]
     public GameState currentState;
+    public bool isExecutingTurn;
 
     // Made private to fix UAC1009 serialization warning
     private int[,] board;
@@ -48,6 +49,12 @@ public class GameManager : MonoBehaviour
         yield return null;
         SpawnPhysicalPieces();
         currentState = GameState.AITurn;
+
+        // Notify the UI of the initial game state
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.UpdateTurnStatus(currentState);
+        }
     }
 
     private void InitializeBoard()
@@ -110,6 +117,7 @@ public class GameManager : MonoBehaviour
 
     public void ExecuteTurn(int playerId, Vector2Int movePos, Vector2Int removePos)
     {
+        isExecutingTurn = true;
         Vector2Int currentPos = (playerId == 1) ? aiPos : playerPos;
 
         board[currentPos.x, currentPos.y] = 0;
@@ -120,22 +128,50 @@ public class GameManager : MonoBehaviour
 
         if (playerId == 1)
         {
+            // Clear any leftover highlights before AI animation starts
+            GridManager.Instance.ClearAllHighlights();
+
             GameObject targetTile = GridManager.Instance.GetTileAt(movePos.x, movePos.y);
             Vector3 targetWorldPos = targetTile.transform.position + Vector3.up * 0.5f;
 
+            AudioManager.Instance?.PlayMoveSound();
             aiPieceTransform.DOMove(targetWorldPos, gameSettings.pieceMoveDuration).SetEase(Ease.InOutQuad).OnComplete(() =>
             {
-                GameObject tileToRemove = GridManager.Instance.GetTileAt(removePos.x, removePos.y);
-                tileToRemove.transform.DOScale(Vector3.zero, gameSettings.tileFadeDuration).SetEase(Ease.InBack).OnComplete(() =>
-                {
-                    ObjectPooler.Instance.ReturnObject("Tile", tileToRemove);
-                    CheckWinConditions();
-                });
+                AnimateTileRemovalAndFinishTurn(removePos);
             });
         }
         else
         {
+            // For the player, the piece movement is animated during PlayerMovePhase.
+            // Here we only animate the tile removal to finish the turn.
+            AnimateTileRemovalAndFinishTurn(removePos);
+        }
+    }
+
+    private void AnimateTileRemovalAndFinishTurn(Vector2Int removePos)
+    {
+        GameObject tileToRemove = GridManager.Instance.GetTileAt(removePos.x, removePos.y);
+        TileVisual removeVisual = GridManager.Instance.GetTileVisualAt(removePos.x, removePos.y);
+
+        AudioManager.Instance?.PlayTileRemoveSound();
+        VFXManager.Instance?.PlayTileDestroyEffect(tileToRemove.transform.position);
+        CameraController.Instance?.ShakeTileDestroy();
+
+        if (removeVisual != null)
+        {
+            removeVisual.PlayRemoveAnimation(() =>
+            {
+                ObjectPooler.Instance.ReturnObject("Tile", tileToRemove);
+                CheckWinConditions();
+                isExecutingTurn = false;
+            });
+        }
+        else
+        {
+            // Fallback if TileVisual is somehow missing
+            ObjectPooler.Instance.ReturnObject("Tile", tileToRemove);
             CheckWinConditions();
+            isExecutingTurn = false;
         }
     }
 
@@ -148,18 +184,33 @@ public class GameManager : MonoBehaviour
         {
             Debug.Log("[GameManager] AI Wins! Player is trapped.");
             currentState = GameState.GameOver;
+
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.UpdateTurnStatus(currentState);
+                UIManager.Instance.ShowGameOver(false); // Player lost
+            }
         }
-        else if (!aiCanNumMoveCheck()) { } // handled below cleanly
         else if (!aiCanMove)
         {
             Debug.Log("[GameManager] Player Wins! AI is trapped.");
             currentState = GameState.GameOver;
+
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.UpdateTurnStatus(currentState);
+                UIManager.Instance.ShowGameOver(true); // Player won
+            }
         }
         else
         {
             currentState = (currentState == GameState.AITurn) ? GameState.PlayerMovePhase : GameState.AITurn;
+
+            // Notify UI of the new turn/phase
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.UpdateTurnStatus(currentState);
+            }
         }
     }
-
-    private bool aiCanNumMoveCheck() => true; // placeholder helper if needed, standard check above works
 }

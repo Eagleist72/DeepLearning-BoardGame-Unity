@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class GridManager : MonoBehaviour
@@ -9,6 +10,9 @@ public class GridManager : MonoBehaviour
 
     // 2D Array to hold references to the instantiated physical tiles
     private GameObject[,] tileGrid;
+
+    // Parallel 2D Array caching the TileVisual component on each tile (avoids GetComponent at runtime)
+    private TileVisual[,] tileVisualGrid;
 
     private void Awake()
     {
@@ -32,6 +36,7 @@ public class GridManager : MonoBehaviour
         float offset = gameSettings.tileOffset;
 
         tileGrid = new GameObject[size, size];
+        tileVisualGrid = new TileVisual[size, size];
 
         // Calculate starting offsets to perfectly center the grid at world origin (0,0,0)
         float startX = -(size / 2f) * offset + (offset / 2f);
@@ -52,6 +57,14 @@ public class GridManager : MonoBehaviour
                     tile.transform.SetParent(this.transform);
                     tile.name = $"Tile_{r}_{c}";
                     tileGrid[r, c] = tile;
+
+                    // Initialize the TileVisual component with shared settings and reset its visual state
+                    TileVisual visual = tile.GetComponent<TileVisual>();
+                    if (visual != null)
+                    {
+                        visual.Initialize(gameSettings);
+                        tileVisualGrid[r, c] = visual;
+                    }
                 }
                 else
                 {
@@ -73,5 +86,55 @@ public class GridManager : MonoBehaviour
 
         Debug.LogWarning($"[GridManager] Attempted to access out-of-bounds tile at ({row}, {col}).");
         return null;
+    }
+
+    /// <summary>
+    /// Returns the cached TileVisual component at the specified grid coordinates.
+    /// </summary>
+    public TileVisual GetTileVisualAt(int row, int col)
+    {
+        if (row >= 0 && row < gameSettings.boardSize && col >= 0 && col < gameSettings.boardSize)
+        {
+            return tileVisualGrid[row, col];
+        }
+
+        Debug.LogWarning($"[GridManager] Attempted to access out-of-bounds TileVisual at ({row}, {col}).");
+        return null;
+    }
+
+    /// <summary>
+    /// Sets the highlight state for a list of tile positions.
+    /// </summary>
+    /// <param name="positions">Board coordinates to toggle.</param>
+    /// <param name="highlight">True to highlight, false to unhighlight.</param>
+    public void HighlightTiles(List<Vector2Int> positions, bool highlight)
+    {
+        for (int i = 0; i < positions.Count; i++)
+        {
+            TileVisual visual = GetTileVisualAt(positions[i].x, positions[i].y);
+            if (visual != null)
+            {
+                visual.SetHighlight(highlight);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears all highlights across the entire board by resetting every active tile.
+    /// </summary>
+    public void ClearAllHighlights()
+    {
+        int size = gameSettings.boardSize;
+        for (int r = 0; r < size; r++)
+        {
+            for (int c = 0; c < size; c++)
+            {
+                TileVisual visual = tileVisualGrid[r, c];
+                if (visual != null)
+                {
+                    visual.SetHighlight(false);
+                }
+            }
+        }
     }
 }

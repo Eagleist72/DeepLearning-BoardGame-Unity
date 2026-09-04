@@ -1,6 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using Unity.InferenceEngine; // Güncellenmiþ kütüphane adý
+using Unity.InferenceEngine; // Updated library name
 using UnityEngine;
 
 public class AIManager : MonoBehaviour
@@ -10,19 +10,25 @@ public class AIManager : MonoBehaviour
     public ModelAsset onnxModelAsset;
 
     private Model runtimeModel;
-    private Worker worker; // IWorker yerine Worker sýnýfý
+    private Worker worker; // Using Worker instead of IWorker
     private bool isThinking = false;
 
     private void Start()
     {
         runtimeModel = ModelLoader.Load(onnxModelAsset);
-        // WorkerFactory yerine doðrudan Worker objesi oluþturuyoruz
+        // Creating a Worker object directly instead of using WorkerFactory
         worker = new Worker(runtimeModel, BackendType.GPUCompute);
     }
 
     private void Update()
     {
-        if (GameManager.Instance.currentState == GameState.AITurn && !isThinking)
+        if (GameManager.Instance.currentState != GameState.AITurn)
+        {
+            isThinking = false;
+            return;
+        }
+
+        if (!isThinking)
         {
             StartCoroutine(ThinkAndPlay());
         }
@@ -49,15 +55,15 @@ public class AIManager : MonoBehaviour
             int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
             float[] flatBoard = FlattenBoard(simulatedBoard);
 
-            // TensorFloat yerine Tensor<float> kullanýyoruz
+            // Using Tensor<float> instead of TensorFloat
             using Tensor<float> inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard);
 
-            // Execute yerine Schedule
+            // Using Schedule instead of Execute
             worker.Schedule(inputTensor);
 
             using Tensor<float> outputTensor = worker.PeekOutput() as Tensor<float>;
 
-            // Veriyi okumak için DownloadToArray kullanýlýyor
+            // Using DownloadToArray to read the data
             float[] outputData = outputTensor.DownloadToArray();
             float score = outputData[0];
 
@@ -69,7 +75,7 @@ public class AIManager : MonoBehaviour
         }
 
         GameManager.Instance.ExecuteTurn(1, bestMove.movePos, bestMove.removePos);
-        isThinking = false;
+        // isThinking remains true until GameManager state changes out of AITurn
     }
 
     private struct MoveData
