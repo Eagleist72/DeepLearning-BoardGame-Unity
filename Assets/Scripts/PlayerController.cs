@@ -17,7 +17,6 @@ public class PlayerController : MonoBehaviour
     {
         GameState currentState = GameManager.Instance.currentState;
 
-        // Detect phase transitions and update highlights accordingly
         if (currentState != lastObservedState)
         {
             OnPhaseChanged(lastObservedState, currentState);
@@ -25,7 +24,9 @@ public class PlayerController : MonoBehaviour
         }
 
         if (currentState != GameState.PlayerMovePhase &&
-            currentState != GameState.PlayerRemovePhase)
+            currentState != GameState.PlayerRemovePhase &&
+            currentState != GameState.Player2MovePhase &&
+            currentState != GameState.Player2RemovePhase)
         {
             return;
         }
@@ -33,13 +34,11 @@ public class PlayerController : MonoBehaviour
         bool inputDetected = false;
         Vector2 screenPosition = Vector2.zero;
 
-        // 1. Mouse input check
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             inputDetected = true;
             screenPosition = Mouse.current.position.ReadValue();
         }
-        // 2. Mobile touch input check
         else if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
         {
             inputDetected = true;
@@ -52,12 +51,8 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Reacts to game phase transitions by updating tile highlights to guide the player.
-    /// </summary>
     private void OnPhaseChanged(GameState previousState, GameState newState)
     {
-        // Update the turn status banner on every phase transition
         if (UIManager.Instance != null)
         {
             UIManager.Instance.UpdateTurnStatus(newState);
@@ -66,33 +61,29 @@ public class PlayerController : MonoBehaviour
         switch (newState)
         {
             case GameState.PlayerMovePhase:
-                ShowMoveHighlights();
+            case GameState.Player2MovePhase:
+                ShowMoveHighlights(newState);
                 break;
 
             case GameState.PlayerRemovePhase:
-                // Remove phase highlights are applied in TryMovePiece after the move is committed
+            case GameState.Player2RemovePhase:
                 break;
 
             case GameState.AITurn:
             case GameState.GameOver:
-                // Clean up all player-facing highlights when control leaves the player
+            case GameState.MainMenu:
                 GridManager.Instance.ClearAllHighlights();
                 break;
         }
     }
 
-    /// <summary>
-    /// Highlights all valid neighbor tiles the player can move to.
-    /// </summary>
-    private void ShowMoveHighlights()
+    private void ShowMoveHighlights(GameState state)
     {
-        List<Vector2Int> validMoves = GameManager.Instance.GetNeighbors(GameManager.Instance.playerPos);
+        Vector2Int pos = (state == GameState.PlayerMovePhase) ? GameManager.Instance.playerPos : GameManager.Instance.aiPos;
+        List<Vector2Int> validMoves = GameManager.Instance.GetNeighbors(pos);
         GridManager.Instance.HighlightTiles(validMoves, true);
     }
 
-    /// <summary>
-    /// Highlights all empty tiles eligible for removal (excludes the newly occupied tile).
-    /// </summary>
     private void ShowRemoveHighlights()
     {
         GameSettings settings = GameManager.Instance.gameSettings;
@@ -103,7 +94,6 @@ public class PlayerController : MonoBehaviour
         {
             for (int c = 0; c < size; c++)
             {
-                // Board value 0 = empty tile; exclude the tile the player just moved to
                 if (GameManager.Instance[r, c] == 0)
                 {
                     Vector2Int pos = new Vector2Int(r, c);
@@ -120,7 +110,6 @@ public class PlayerController : MonoBehaviour
 
     private void HandleInteraction(Vector2 screenPos)
     {
-        // Cast a ray from the screen position through the camera into the scene
         Ray ray = mainCamera.ScreenPointToRay(screenPos);
 
         if (Physics.Raycast(ray, out RaycastHit hit, 100f, tileLayer))
@@ -132,21 +121,24 @@ public class PlayerController : MonoBehaviour
                 int c = int.Parse(nameParts[2]);
                 Vector2Int clickedPos = new Vector2Int(r, c);
 
-                if (GameManager.Instance.currentState == GameState.PlayerMovePhase)
+                GameState state = GameManager.Instance.currentState;
+                if (state == GameState.PlayerMovePhase || state == GameState.Player2MovePhase)
                 {
-                    TryMovePiece(clickedPos);
+                    TryMovePiece(clickedPos, state);
                 }
-                else if (GameManager.Instance.currentState == GameState.PlayerRemovePhase)
+                else if (state == GameState.PlayerRemovePhase || state == GameState.Player2RemovePhase)
                 {
-                    TryRemoveTile(clickedPos);
+                    TryRemoveTile(clickedPos, state);
                 }
             }
         }
     }
 
-    private void TryMovePiece(Vector2Int targetPos)
+    private void TryMovePiece(Vector2Int targetPos, GameState state)
     {
-        List<Vector2Int> validMoves = GameManager.Instance.GetNeighbors(GameManager.Instance.playerPos);
+        int playerId = (state == GameState.PlayerMovePhase) ? 2 : 1;
+        Vector2Int currentPos = (playerId == 2) ? GameManager.Instance.playerPos : GameManager.Instance.aiPos;
+        List<Vector2Int> validMoves = GameManager.Instance.GetNeighbors(currentPos);
 
         if (validMoves.Contains(targetPos))
         {
@@ -157,31 +149,30 @@ public class PlayerController : MonoBehaviour
             Vector3 targetWorldPos = targetTile.transform.position + Vector3.up * 0.5f;
 
             AudioManager.Instance?.PlayMoveSound();
-            GameManager.Instance.isExecutingTurn = true; // Block input during move
+            GameManager.Instance.isExecutingTurn = true; 
             
-            GameManager.Instance.playerPieceTransform.DOMove(targetWorldPos, moveDuration).SetEase(Ease.InOutQuad).OnComplete(() =>
+            Transform pieceToMove = (playerId == 2) ? GameManager.Instance.playerPieceTransform : GameManager.Instance.aiPieceTransform;
+
+            pieceToMove.DOMove(targetWorldPos, moveDuration).SetEase(Ease.InOutQuad).OnComplete(() =>
             {
-                // Clear move-phase highlights, then show removal-phase highlights
                 GridManager.Instance.ClearAllHighlights();
-                GameManager.Instance.currentState = GameState.PlayerRemovePhase;
+                GameManager.Instance.currentState = (playerId == 2) ? GameState.PlayerRemovePhase : GameState.Player2RemovePhase;
                 ShowRemoveHighlights();
-                GameManager.Instance.isExecutingTurn = false; // Allow input again
+                GameManager.Instance.isExecutingTurn = false;
             });
         }
     }
 
-    private void TryRemoveTile(Vector2Int targetPos)
+    private void TryRemoveTile(Vector2Int targetPos, GameState state)
     {
         bool isEmpty = GameManager.Instance[targetPos.x, targetPos.y] == 0;
         bool isNewPieceLocation = (targetPos == selectedMovePos);
 
         if (isEmpty && !isNewPieceLocation)
         {
-            // Clear all removal highlights before delegating to GameManager
             GridManager.Instance.ClearAllHighlights();
-
-            // Delegate to GameManager which now handles the animation and state change
-            GameManager.Instance.ExecuteTurn(2, selectedMovePos, targetPos);
+            int playerId = (state == GameState.PlayerRemovePhase) ? 2 : 1;
+            GameManager.Instance.ExecuteTurn(playerId, selectedMovePos, targetPos);
         }
     }
 }

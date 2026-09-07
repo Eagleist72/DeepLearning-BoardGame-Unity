@@ -3,11 +3,16 @@ using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
 
-public enum GameState { PlayerMovePhase, PlayerRemovePhase, AITurn, GameOver }
+public enum GameState { PlayerMovePhase, PlayerRemovePhase, AITurn, GameOver, Player2MovePhase, Player2RemovePhase, MainMenu }
+public enum GameMode { VsAI, PassAndPlay }
+public enum AIDifficulty { Easy, Medium, Hard }
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
+
+    public static GameMode CurrentMode = GameMode.VsAI;
+    public static AIDifficulty CurrentDifficulty = AIDifficulty.Hard;
 
     [Header("References")]
     public GameSettings gameSettings;
@@ -48,9 +53,25 @@ public class GameManager : MonoBehaviour
         InitializeBoard();
         yield return null;
         SpawnPhysicalPieces();
-        currentState = GameState.AITurn;
+        
+        // Boot into MainMenu instead of AITurn
+        currentState = GameState.MainMenu;
+        
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.OpenMainMenu();
+        }
+    }
 
-        // Notify the UI of the initial game state
+    public void StartGameSequence(GameMode mode, AIDifficulty diff)
+    {
+        CurrentMode = mode;
+        CurrentDifficulty = diff;
+        
+        // Reset board logic if starting from menu after previous game?
+        // Let's assume SceneManager handles restart, so we just set initial turn here.
+        currentState = (mode == GameMode.VsAI) ? GameState.AITurn : GameState.Player2MovePhase;
+        
         if (UIManager.Instance != null)
         {
             UIManager.Instance.UpdateTurnStatus(currentState);
@@ -87,7 +108,7 @@ public class GameManager : MonoBehaviour
 
         Vector3 aSpawnPos = GridManager.Instance.GetTileAt(aiPos.x, aiPos.y).transform.position + Vector3.up * yOffset;
         GameObject aObj = ObjectPooler.Instance.GetObject("Piece", aSpawnPos, Quaternion.identity);
-        aObj.GetComponent<Renderer>().material.color = gameSettings.aiColor;
+        aObj.GetComponent<Renderer>().material.color = gameSettings.aiColor; // Reused for Player 2
         aiPieceTransform = aObj.transform;
     }
 
@@ -126,7 +147,7 @@ public class GameManager : MonoBehaviour
         else playerPos = movePos;
         board[removePos.x, removePos.y] = -1;
 
-        if (playerId == 1)
+        if (playerId == 1 && CurrentMode == GameMode.VsAI)
         {
             // Clear any leftover highlights before AI animation starts
             GridManager.Instance.ClearAllHighlights();
@@ -142,7 +163,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // For the player, the piece movement is animated during PlayerMovePhase.
+            // For the player (or Pass & Play Player 2), the piece movement is animated during their MovePhase.
             // Here we only animate the tile removal to finish the turn.
             AnimateTileRemovalAndFinishTurn(removePos);
         }
@@ -168,7 +189,6 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // Fallback if TileVisual is somehow missing
             ObjectPooler.Instance.ReturnObject("Tile", tileToRemove);
             CheckWinConditions();
             isExecutingTurn = false;
@@ -182,9 +202,7 @@ public class GameManager : MonoBehaviour
 
         if (!playerCanMove)
         {
-            Debug.Log("[GameManager] AI Wins! Player is trapped.");
             currentState = GameState.GameOver;
-
             if (UIManager.Instance != null)
             {
                 UIManager.Instance.UpdateTurnStatus(currentState);
@@ -193,9 +211,7 @@ public class GameManager : MonoBehaviour
         }
         else if (!aiCanMove)
         {
-            Debug.Log("[GameManager] Player Wins! AI is trapped.");
             currentState = GameState.GameOver;
-
             if (UIManager.Instance != null)
             {
                 UIManager.Instance.UpdateTurnStatus(currentState);
@@ -204,9 +220,16 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            currentState = (currentState == GameState.AITurn) ? GameState.PlayerMovePhase : GameState.AITurn;
+            if (CurrentMode == GameMode.PassAndPlay)
+            {
+                if (currentState == GameState.PlayerRemovePhase) currentState = GameState.Player2MovePhase;
+                else if (currentState == GameState.Player2RemovePhase) currentState = GameState.PlayerMovePhase;
+            }
+            else
+            {
+                currentState = (currentState == GameState.AITurn) ? GameState.PlayerMovePhase : GameState.AITurn;
+            }
 
-            // Notify UI of the new turn/phase
             if (UIManager.Instance != null)
             {
                 UIManager.Instance.UpdateTurnStatus(currentState);

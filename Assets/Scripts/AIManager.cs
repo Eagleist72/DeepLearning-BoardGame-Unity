@@ -47,35 +47,75 @@ public class AIManager : MonoBehaviour
             yield break;
         }
 
-        float bestScore = -Mathf.Infinity;
-        MoveData bestMove = validMoves[0];
+        MoveData selectedMove = validMoves[0];
+        AIDifficulty diff = GameManager.CurrentDifficulty;
 
-        foreach (MoveData move in validMoves)
+        // EASY: 50% chance of making a completely random valid move
+        if (diff == AIDifficulty.Easy && Random.value < 0.5f)
         {
-            int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
-            float[] flatBoard = FlattenBoard(simulatedBoard);
+            selectedMove = validMoves[Random.Range(0, validMoves.Count)];
+        }
+        else
+        {
+            List<KeyValuePair<MoveData, float>> scoredMoves = new List<KeyValuePair<MoveData, float>>();
 
-            // Using Tensor<float> instead of TensorFloat
-            using Tensor<float> inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard);
-
-            // Using Schedule instead of Execute
-            worker.Schedule(inputTensor);
-
-            using Tensor<float> outputTensor = worker.PeekOutput() as Tensor<float>;
-
-            // Using DownloadToArray to read the data
-            float[] outputData = outputTensor.DownloadToArray();
-            float score = outputData[0];
-
-            if (score > bestScore)
+            foreach (MoveData move in validMoves)
             {
-                bestScore = score;
-                bestMove = move;
+                int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
+                float[] flatBoard = FlattenBoard(simulatedBoard);
+
+                using Tensor<float> inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard);
+                worker.Schedule(inputTensor);
+
+                using Tensor<float> outputTensor = worker.PeekOutput() as Tensor<float>;
+                float[] outputData = outputTensor.DownloadToArray();
+                float score = outputData[0];
+
+                scoredMoves.Add(new KeyValuePair<MoveData, float>(move, score));
+            }
+
+            // Sort descending by score
+            scoredMoves.Sort((a, b) => b.Value.CompareTo(a.Value));
+
+            if (diff == AIDifficulty.Hard || diff == AIDifficulty.Easy)
+            {
+                // Hard mode (or the 50% 'smart' portion of Easy) picks the absolute best move.
+                selectedMove = scoredMoves[0].Key;
+            }
+            else if (diff == AIDifficulty.Medium)
+            {
+                // Medium: Softmax temperature sampling over top moves to add variance without being completely dumb
+                float temperature = 0.5f;
+                float sumExp = 0f;
+                
+                // Limit to top 5 moves to ensure it's not completely random
+                int poolSize = Mathf.Min(5, scoredMoves.Count);
+                List<float> expScores = new List<float>();
+
+                for (int i = 0; i < poolSize; i++)
+                {
+                    float exp = Mathf.Exp(scoredMoves[i].Value / temperature);
+                    expScores.Add(exp);
+                    sumExp += exp;
+                }
+
+                float rand = Random.value * sumExp;
+                float cumulative = 0f;
+                selectedMove = scoredMoves[0].Key; // fallback
+
+                for (int i = 0; i < poolSize; i++)
+                {
+                    cumulative += expScores[i];
+                    if (rand <= cumulative)
+                    {
+                        selectedMove = scoredMoves[i].Key;
+                        break;
+                    }
+                }
             }
         }
 
-        GameManager.Instance.ExecuteTurn(1, bestMove.movePos, bestMove.removePos);
-        // isThinking remains true until GameManager state changes out of AITurn
+        GameManager.Instance.ExecuteTurn(1, selectedMove.movePos, selectedMove.removePos);
     }
 
     private struct MoveData
