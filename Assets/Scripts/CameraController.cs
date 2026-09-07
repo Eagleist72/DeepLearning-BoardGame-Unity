@@ -75,15 +75,16 @@ public class CameraController : MonoBehaviour
         Vector3 boardCenter = Vector3.zero;
 
         // Position the camera
-        // We set a fixed rotation for an isometric/top-down feel (e.g., 50 degrees down)
-        transform.rotation = Quaternion.Euler(cameraAngleX, 0f, 0f);
+        // Set rotation to face negative Z (180 degrees on Y) with the downward angle
+        transform.rotation = Quaternion.Euler(cameraAngleX, 180f, 0f);
 
         // Move the camera back and up based on the angle
         float radAngle = cameraAngleX * Mathf.Deg2Rad;
         float yPos = Mathf.Sin(radAngle) * baseDistance;
         float zOffset = Mathf.Cos(radAngle) * baseDistance;
         
-        Vector3 desiredPosition = boardCenter + new Vector3(0f, yPos, -zOffset);
+        // Since we are rotated 180 degrees on Y, the camera should be at positive Z offset
+        Vector3 desiredPosition = boardCenter + new Vector3(0f, yPos, zOffset);
         transform.position = desiredPosition;
 
         // Calculate required size to fit the board width and depth

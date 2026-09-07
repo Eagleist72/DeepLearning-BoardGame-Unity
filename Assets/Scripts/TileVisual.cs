@@ -21,6 +21,7 @@ public class TileVisual : MonoBehaviour
     // --- State Tracking ---
     private Color currentColor;
     private bool isHighlighted;
+    private Vector3 initialScale;
 
     // Shader property ID cached once to avoid string hashing every frame
     private static readonly int ColorPropertyId = Shader.PropertyToID("_Color");
@@ -29,6 +30,7 @@ public class TileVisual : MonoBehaviour
     {
         cachedRenderer = GetComponent<Renderer>();
         propBlock = new MaterialPropertyBlock();
+        initialScale = transform.localScale;
     }
 
     /// <summary>
@@ -106,7 +108,7 @@ public class TileVisual : MonoBehaviour
         scaleTween = null;
 
         isHighlighted = false;
-        transform.localScale = Vector3.one;
+        transform.localScale = initialScale;
 
         // Apply default color immediately (no tween)
         Color defaultColor = gameSettings != null ? gameSettings.defaultTileColor : Color.white;

@@ -20,7 +20,16 @@ MonoBehaviour:
   initialTilePoolSize: 49
   initialPiecePoolSize: 10
   initialVfxPoolSize: 5
-  playerColor: {r: 0.9, g: 0.2, b: 0.2, a: 1}
-  aiColor: {r: 0.2, g: 0.5, b: 0.9, a: 1}
-  highlightColor: {r: 0.9, g: 0.8, b: 0.2, a: 1}
+  initialAudioSourcePoolSize: 10
+  defaultTileColor: {r: 0.972549, g: 0.98039216, b: 0.9882353, a: 1}
+  playerColor: {r: 0.023529412, g: 0.8392157, b: 0.627451, a: 1}
+  aiColor: {r: 1, g: 0.41960785, b: 0.41960785, a: 1}
+  highlightColor: {r: 0.9843137, g: 0.7490196, b: 0.14117648, a: 1}
   removedTileColor: {r: 0.2, g: 0.2, b: 0.2, a: 0.5}
+  moveClip: {fileID: 0}
+  tileRemoveClip: {fileID: 0}
+  uiClickClip: {fileID: 0}
+  victoryClip: {fileID: 0}
+  defeatClip: {fileID: 0}
+  masterVolume: 1
+  sfxVolume: 0.8
