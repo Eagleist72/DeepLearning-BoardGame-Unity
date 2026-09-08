@@ -41,49 +41,61 @@ public class UIManager : MonoBehaviour
     public Button quickRestartButton;
     public Button settingsButton;
 
-    [Header("Main Menu & Panels")]
-    public CanvasGroup mainMenuPanel;
-    public CanvasGroup gameHUDPanel;
-    public CanvasGroup settingsModal;
+    [Header("UI Panels & CanvasGroups")]
+    [SerializeField] private CanvasGroup mainMenuPanel;
+    [SerializeField] private CanvasGroup gameHUDPanel;
+    [SerializeField] private CanvasGroup settingsModal;
     
-    [Tooltip("Text element for difficulty badge on menu (e.g. '😎 MEDIUM')")]
-    public TextMeshProUGUI difficultyBadgeText;
+    [Tooltip("Text element for difficulty badge on menu (e.g. 'MEDIUM')")]
+    [SerializeField] private TextMeshProUGUI difficultyBadgeText;
     
     [Tooltip("Text to show what the pass and play mode is")]
-    public Button playVsBotBtn;
-    public Button playPassAndPlayBtn;
-    public Button difficultyToggleBtn;
-    public Button closeSettingsBtn;
+    [SerializeField] private Button playVsBotBtn;
+    [SerializeField] private Button playPassAndPlayBtn;
+    [SerializeField] private Button difficultyToggleBtn;
+    [SerializeField] private Button closeSettingsBtn;
+    [SerializeField] private Button sfxToggleBtn;
+    [SerializeField] private Button musicToggleBtn;
+    [SerializeField] private Button hapticsToggleBtn;
+    [SerializeField] private Button mainMenuSettingsBtn;
 
     [Header("Score Header")]
     [Tooltip("TextMeshProUGUI for Player score")]
-    public TextMeshProUGUI playerScoreText;
+    [SerializeField] private TextMeshProUGUI playerScoreText;
 
     [Tooltip("TextMeshProUGUI for AI score")]
-    public TextMeshProUGUI aiScoreText;
+    [SerializeField] private TextMeshProUGUI aiScoreText;
 
-    [Header("Dynamic Background")]
+    [Header("Theme & Dynamic Sky Colors")]
     [Tooltip("Main Camera to transition background color")]
-    public Camera mainCamera;
+    [SerializeField] private Camera mainCamera;
 
-    [Tooltip("Background color during Player turn (Warm Peach)")]
-    public Color playerTurnBgColor = new Color(250f/255f, 177f/255f, 160f/255f, 1f); // #FAB1A0
+    [Tooltip("Sky color during Player 1's turn")]
+    [SerializeField] private Color playerTurnBgColor = new Color(250f/255f, 177f/255f, 160f/255f, 1f); // #FAB1A0
 
-    [Tooltip("Background color during AI turn (Soft Blue)")]
-    public Color aiTurnBgColor = new Color(116f/255f, 185f/255f, 255f/255f, 1f); // #74B9FF
+    [Tooltip("Sky color during AI / Player 2's turn")]
+    [SerializeField] private Color aiTurnBgColor = new Color(116f/255f, 185f/255f, 255f/255f, 1f); // #74B9FF
 
+    [Range(0.1f, 1.0f)]
     [Tooltip("Duration of background color transition")]
-    public float bgTransitionDuration = 0.4f;
+    [SerializeField] private float bgTransitionDuration = 0.4f;
 
     [Header("Animation Settings")]
     [Tooltip("Duration for the turn banner punch scale animation")]
-    public float bannerPunchDuration = 0.35f;
+    [SerializeField] private float bannerPunchDuration = 0.35f;
 
     [Tooltip("Scale punch strength applied to the turn banner on text change")]
-    public float bannerPunchScale = 0.15f;
+    [SerializeField] private float bannerPunchScale = 0.15f;
 
     [Tooltip("Duration for the game over popup fade and scale animation")]
-    public float gameOverAnimDuration = 0.5f;
+    [SerializeField] private float gameOverAnimDuration = 0.5f;
+
+    [Header("Tactile Juice Settings")]
+    [Range(0.05f, 0.5f)] [Tooltip("Punch scale punch amount on button clicks")]
+    [SerializeField] private float buttonPunchScale = 0.1f;
+    
+    [Range(0.05f, 0.5f)] [Tooltip("Duration of the tactile button press")]
+    [SerializeField] private float buttonPunchDuration = 0.15f;
 
     // Session Score Tracking
     public static int SessionPlayerWins = 0;
@@ -125,60 +137,60 @@ public class UIManager : MonoBehaviour
         if (mainCamera == null)
             mainCamera = Camera.main;
 
-        // Auto-wire UI components if not assigned
-        if (mainMenuPanel == null)
+        // --- Auto-wire panels (fallback if Inspector refs are missing) ---
+        AutoWireCanvasGroup(ref mainMenuPanel, "MainMenuPanel");
+        AutoWireCanvasGroup(ref gameHUDPanel, "GameHUDPanel");
+        AutoWireCanvasGroup(ref settingsModal, "SettingsModal");
+
+        // --- Auto-wire buttons ---
+        AutoWireButton(ref playVsBotBtn, "PlayVsBotButton");
+        AutoWireButton(ref playPassAndPlayBtn, "PassPlayButton");
+        AutoWireButton(ref difficultyToggleBtn, "DifficultyBadge");
+        AutoWireButton(ref closeSettingsBtn, "CloseBtn");
+        AutoWireButton(ref sfxToggleBtn, "SfxToggleBtn");
+        AutoWireButton(ref musicToggleBtn, "MusicToggleBtn");
+        AutoWireButton(ref hapticsToggleBtn, "HapticsToggleBtn");
+        AutoWireButton(ref mainMenuSettingsBtn, "SettingsButton"); // Will find one of them, but we have two
+        
+        // Wire the background overlay to close the modal
+        Button closeOverlayBtn = null;
+        if (settingsModal != null)
         {
-            var mm = GameObject.Find("MainMenuPanel");
-            if (mm != null) mainMenuPanel = mm.GetComponent<CanvasGroup>();
-        }
-        if (gameHUDPanel == null)
-        {
-            var gh = GameObject.Find("GameHUDPanel");
-            if (gh != null) gameHUDPanel = gh.GetComponent<CanvasGroup>();
-        }
-        if (settingsModal == null)
-        {
-            var sm = GameObject.Find("SettingsModal");
-            if (sm != null) settingsModal = sm.GetComponent<CanvasGroup>();
+            var bgTransform = settingsModal.transform.Find("Bg");
+            if (bgTransform != null) closeOverlayBtn = bgTransform.GetComponent<Button>();
         }
 
-        // Auto-wire buttons
-        if (playVsBotBtn == null)
+        // Wait, AutoWireButton finds by name globally in UICanvas. We have two "SettingsButton". Let's explicitly find the MainMenu one if null.
+        if (mainMenuSettingsBtn == null && mainMenuPanel != null)
         {
-            var pvb = GameObject.Find("PlayVsBotButton");
-            if (pvb != null) playVsBotBtn = pvb.GetComponent<Button>();
-        }
-        if (playPassAndPlayBtn == null)
-        {
-            var ppb = GameObject.Find("PassPlayButton");
-            if (ppb != null) playPassAndPlayBtn = ppb.GetComponent<Button>();
-        }
-        if (difficultyToggleBtn == null)
-        {
-            var dtb = GameObject.Find("DifficultyBadge");
-            if (dtb != null) difficultyToggleBtn = dtb.GetComponent<Button>();
-        }
-        if (closeSettingsBtn == null)
-        {
-            var csb = GameObject.Find("CloseBtn");
-            if (csb != null) closeSettingsBtn = csb.GetComponent<Button>();
-        }
-        if (difficultyBadgeText == null)
-        {
-            var db = GameObject.Find("DifficultyBadge");
-            if (db != null) difficultyBadgeText = db.GetComponent<TextMeshProUGUI>();
+            var mmBtn = mainMenuPanel.transform.Find("SettingsButton");
+            if (mmBtn != null) mainMenuSettingsBtn = mmBtn.GetComponent<Button>();
         }
 
-        // Add Listeners dynamically
+        // --- Auto-wire TMP text fields via hierarchy path ---
+        AutoWireTMP(ref playerScoreText, "GameHUDPanel/ScoreHeaderCard/PlayerScoreText");
+        AutoWireTMP(ref aiScoreText, "GameHUDPanel/ScoreHeaderCard/AIScoreText");
+        AutoWireTMP(ref turnBannerText, "GameHUDPanel/TurnBannerCard/TurnBannerText");
+        AutoWireTMP(ref difficultyBadgeText, "MainMenuPanel/PlayVsBotButton/DifficultyBadge");
+
+        // --- Register button listeners ---
         if (playVsBotBtn != null) playVsBotBtn.onClick.AddListener(() => StartGame(0));
         if (playPassAndPlayBtn != null) playPassAndPlayBtn.onClick.AddListener(() => StartGame(1));
         if (difficultyToggleBtn != null) difficultyToggleBtn.onClick.AddListener(ToggleAIDifficulty);
         if (closeSettingsBtn != null) closeSettingsBtn.onClick.AddListener(CloseSettings);
-        if (settingsButton != null) settingsButton.onClick.AddListener(OpenSettings);
+        if (closeOverlayBtn != null) closeOverlayBtn.onClick.AddListener(CloseSettings);
+        if (settingsButton != null) settingsButton.onClick.AddListener(OpenSettings); // HUD settings
+        if (mainMenuSettingsBtn != null) mainMenuSettingsBtn.onClick.AddListener(OpenSettings); // Main menu settings
+        
+        if (sfxToggleBtn != null) sfxToggleBtn.onClick.AddListener(ToggleSFX);
+        if (musicToggleBtn != null) musicToggleBtn.onClick.AddListener(ToggleMusic);
+        if (hapticsToggleBtn != null) hapticsToggleBtn.onClick.AddListener(ToggleHaptics);
+
         if (menuButton != null) menuButton.onClick.AddListener(OnMenuClicked);
         if (quickRestartButton != null) quickRestartButton.onClick.AddListener(OnQuickRestartClicked);
         if (restartButton != null) restartButton.onClick.AddListener(RestartGame);
 
+        // Hide game over panel on start
         if (gameOverCanvasGroup != null)
         {
             gameOverCanvasGroup.alpha = 0f;
@@ -186,8 +198,125 @@ public class UIManager : MonoBehaviour
             gameOverCanvasGroup.blocksRaycasts = false;
             gameOverCanvasGroup.gameObject.SetActive(false);
         }
+    }
 
+    private void Start()
+    {
+        // Load difficulty from PlayerPrefs
+        GameManager.ActiveDifficulty = (AIDifficulty)PlayerPrefs.GetInt("AIDifficulty", (int)AIDifficulty.Hard);
+
+        // Force-populate all text fields so nothing is ever blank on screen
+        ForceInitializeAllTexts();
         UpdateScoreDisplay();
+        UpdateDifficultyUI();
+
+        // Set initial turn banner text
+        if (turnBannerText != null)
+        {
+            turnBannerText.text = StatusPlayerMove;
+        }
+    }
+
+    /// <summary>
+    /// Ensures every TextMeshProUGUI component under UICanvas has a valid font,
+    /// bold styling, is enabled, and has mesh generated. This runs once at startup.
+    /// </summary>
+    private void ForceInitializeAllTexts()
+    {
+        var defaultFont = TMP_Settings.defaultFontAsset;
+        var allTexts = GetComponentsInChildren<TextMeshProUGUI>(true);
+
+        foreach (var txt in allTexts)
+        {
+            // Re-enable any accidentally disabled TMP components
+            if (!txt.enabled)
+            {
+                txt.enabled = true;
+            }
+
+            // Fix any remaining broken font references
+            if (txt.font == null || txt.font.atlasTexture == null)
+            {
+                txt.font = defaultFont;
+            }
+
+            // Ensure bold styling for readability
+            if (txt.fontStyle == FontStyles.Normal)
+            {
+                txt.fontStyle = FontStyles.Bold;
+            }
+
+            // Force TMP to generate mesh geometry immediately
+            txt.ForceMeshUpdate(true);
+        }
+
+        // Explicitly set default button label texts (in case scene-saved text is blank)
+        SetChildText(playVsBotBtn, "PLAY VS BOT");
+        SetChildText(playPassAndPlayBtn, "PASS & PLAY");
+
+        // Force Canvas to process layout updates
+        Canvas.ForceUpdateCanvases();
+    }
+
+    /// <summary>
+    /// Sets the text on a TextMeshProUGUI child of a Button, if the child text is empty.
+    /// </summary>
+    private void SetChildText(Button btn, string text)
+    {
+        if (btn == null) return;
+        var tmp = btn.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (tmp != null && string.IsNullOrEmpty(tmp.text))
+        {
+            tmp.text = text;
+        }
+    }
+
+    // --- Auto-wire helpers that search the entire Canvas hierarchy (including inactive) ---
+
+    private void AutoWireCanvasGroup(ref CanvasGroup field, string objectName)
+    {
+        if (field != null) return;
+        var found = FindInChildrenByName<CanvasGroup>(transform, objectName);
+        if (found != null) field = found;
+    }
+
+    private void AutoWireButton(ref Button field, string objectName)
+    {
+        if (field != null) return;
+        var found = FindInChildrenByName<Button>(transform, objectName);
+        if (found != null) field = found;
+    }
+
+    private void AutoWireTMP(ref TextMeshProUGUI field, string hierarchyPath)
+    {
+        if (field != null) return;
+        // hierarchyPath like "GameHUDPanel/ScoreHeaderCard/PlayerScoreText"
+        Transform current = transform;
+        string[] parts = hierarchyPath.Split('/');
+        foreach (string part in parts)
+        {
+            current = current.Find(part);
+            if (current == null) return;
+        }
+        field = current.GetComponent<TextMeshProUGUI>();
+    }
+
+    /// <summary>
+    /// Recursively searches children (including inactive) for a component on a named object.
+    /// </summary>
+    private T FindInChildrenByName<T>(Transform parent, string objectName) where T : Component
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name == objectName)
+            {
+                var comp = child.GetComponent<T>();
+                if (comp != null) return comp;
+            }
+            var result = FindInChildrenByName<T>(child, objectName);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     /// <summary>
@@ -221,12 +350,12 @@ public class UIManager : MonoBehaviour
                 }
                 break;
             case GameState.PlayerMovePhase:
-                statusText = StatusPlayerMove;
+                statusText = GameManager.ActiveMode == GameMode.PassAndPlay ? "Player 1: Move" : StatusPlayerMove;
                 dotColor = DotColorPlayer;
                 targetBgColor = playerTurnBgColor;
                 break;
             case GameState.PlayerRemovePhase:
-                statusText = StatusPlayerRemove;
+                statusText = GameManager.ActiveMode == GameMode.PassAndPlay ? "Player 1: Collapse" : StatusPlayerRemove;
                 dotColor = DotColorPlayer;
                 targetBgColor = playerTurnBgColor;
                 break;
@@ -243,7 +372,6 @@ public class UIManager : MonoBehaviour
             case GameState.GameOver:
                 statusText = StatusGameOver;
                 dotColor = DotColorNeutral;
-                // Keep the current background color during game over
                 break;
             case GameState.MainMenu:
                 statusText = "Menu";
@@ -340,6 +468,7 @@ public class UIManager : MonoBehaviour
     public void RestartGame()
     {
         HandleButtonClick(restartButton, () => {
+            // For now, reload scene to reset board state
             DOTween.KillAll();
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         });
@@ -348,8 +477,31 @@ public class UIManager : MonoBehaviour
     public void OnMenuClicked()
     {
         HandleButtonClick(menuButton, () => {
-            DOTween.KillAll();
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            // Fade out GameHUDPanel and GameOverModal
+            if (gameOverCanvasGroup != null) gameOverCanvasGroup.DOFade(0f, 0.2f);
+            if (gameHUDPanel != null)
+            {
+                gameHUDPanel.interactable = false;
+                gameHUDPanel.blocksRaycasts = false;
+                gameHUDPanel.DOFade(0f, 0.2f);
+            }
+
+            // Trigger CameraController.TransitionToMenu
+            if (CameraController.Instance != null)
+            {
+                CameraController.Instance.TransitionToMenu(() => {
+                    // Because we lack a soft ResetBoard() method, we'll reload the scene
+                    // to reset the board. Since Awake() handles the boot states (MainMenu active, camera at MenuFraming),
+                    // it will correctly appear seamlessly at the menu.
+                    DOTween.KillAll();
+                    SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+                });
+            }
+            else
+            {
+                DOTween.KillAll();
+                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            }
         });
     }
 
@@ -378,7 +530,7 @@ public class UIManager : MonoBehaviour
         }
         
         btn.interactable = false;
-        btn.transform.DOPunchScale(Vector3.one * -0.1f, 0.15f, 1, 0.5f)
+        btn.transform.DOPunchScale(Vector3.one * -buttonPunchScale, buttonPunchDuration, 1, 0.5f)
             .SetUpdate(true)
             .OnComplete(() =>
             {
@@ -409,13 +561,21 @@ public class UIManager : MonoBehaviour
 
     private void UpdateScoreDisplay()
     {
+        bool isPassPlay = GameManager.ActiveMode == GameMode.PassAndPlay;
+
         if (playerScoreText != null)
         {
-            playerScoreText.text = $"YOU <color=#06D6A0>{SessionPlayerWins}</color>";
+            playerScoreText.text = (isPassPlay ? "P1  " : "YOU  ") + SessionPlayerWins;
+            playerScoreText.color = new Color(6f / 255f, 214f / 255f, 160f / 255f); // Jade
+            playerScoreText.fontStyle = FontStyles.Bold;
+            playerScoreText.fontSize = 24f;
         }
         if (aiScoreText != null)
         {
-            aiScoreText.text = $"<color=#FF6B6B>{SessionAIWins}</color> BOT";
+            aiScoreText.text = SessionAIWins + (isPassPlay ? "  P2" : "  BOT");
+            aiScoreText.color = new Color(255f / 255f, 107f / 255f, 107f / 255f); // Rose
+            aiScoreText.fontStyle = FontStyles.Bold;
+            aiScoreText.fontSize = 24f;
         }
     }
 
@@ -445,37 +605,59 @@ public class UIManager : MonoBehaviour
         GameMode mode = (GameMode)modeIndex;
         AudioManager.Instance?.PlayUIClickSound();
 
-        // Crossfade panels
+        // 1. Immediately disable raycasts to prevent multi-clicks
         if (mainMenuPanel != null)
         {
-            mainMenuPanel.interactable = false;
             mainMenuPanel.blocksRaycasts = false;
-            mainMenuPanel.DOFade(0f, 0.4f).OnComplete(() => mainMenuPanel.gameObject.SetActive(false));
+            mainMenuPanel.interactable = false;
+            
+            // 2. Fade out MainMenuPanel
+            mainMenuPanel.DOFade(0f, 0.25f);
         }
 
-        if (gameHUDPanel != null)
+        // 3. Trigger Camera Transition
+        if (CameraController.Instance != null)
         {
-            gameHUDPanel.DOFade(1f, 0.4f).OnComplete(() =>
+            CameraController.Instance.TransitionToGame(() =>
             {
-                gameHUDPanel.interactable = true;
-                gameHUDPanel.blocksRaycasts = true;
+                // 4. In callback: Fade in GameHUDPanel and start game
+                if (mainMenuPanel != null) mainMenuPanel.gameObject.SetActive(false);
+                
+                if (gameHUDPanel != null)
+                {
+                    gameHUDPanel.gameObject.SetActive(true);
+                    gameHUDPanel.DOFade(1f, 0.25f).OnComplete(() =>
+                    {
+                        gameHUDPanel.interactable = true;
+                        gameHUDPanel.blocksRaycasts = true;
+                    });
+                }
+
+                GameManager.Instance.StartGameSequence(mode, GameManager.ActiveDifficulty);
             });
         }
-
-        GameManager.Instance.StartGameSequence(mode, GameManager.CurrentDifficulty);
+        else
+        {
+            // Fallback if camera controller is missing
+            GameManager.Instance.StartGameSequence(mode, GameManager.ActiveDifficulty);
+        }
     }
 
     public void ToggleAIDifficulty()
     {
         AudioManager.Instance?.PlayUIClickSound();
-        if (difficultyToggleBtn != null)
+        if (difficultyBadgeText != null)
         {
-            difficultyToggleBtn.transform.DOPunchScale(Vector3.one * -0.1f, 0.15f, 1, 0.5f);
+            difficultyBadgeText.transform.DOPunchScale(Vector3.one * buttonPunchScale, buttonPunchDuration);
         }
 
-        int diff = (int)GameManager.CurrentDifficulty + 1;
+        int diff = (int)GameManager.ActiveDifficulty + 1;
         if (diff > 2) diff = 0;
-        GameManager.CurrentDifficulty = (AIDifficulty)diff;
+        GameManager.ActiveDifficulty = (AIDifficulty)diff;
+        
+        PlayerPrefs.SetInt("AIDifficulty", diff);
+        PlayerPrefs.Save();
+        
         UpdateDifficultyUI();
     }
 
@@ -483,34 +665,60 @@ public class UIManager : MonoBehaviour
     {
         if (difficultyBadgeText == null) return;
         
-        switch (GameManager.CurrentDifficulty)
+        switch (GameManager.ActiveDifficulty)
         {
             case AIDifficulty.Easy:
-                difficultyBadgeText.text = "😊 EASY";
-                difficultyBadgeText.color = new Color(6f/255f, 214f/255f, 160f/255f); // Jade
+                difficultyBadgeText.text = "EASY";
+                ColorUtility.TryParseHtmlString("#10B981", out Color easyCol);
+                difficultyBadgeText.color = easyCol;
                 break;
             case AIDifficulty.Medium:
-                difficultyBadgeText.text = "😎 MEDIUM";
-                difficultyBadgeText.color = new Color(251f/255f, 191f/255f, 36f/255f); // Amber
+                difficultyBadgeText.text = "MEDIUM";
+                ColorUtility.TryParseHtmlString("#F59E0B", out Color medCol);
+                difficultyBadgeText.color = medCol;
                 break;
             case AIDifficulty.Hard:
-                difficultyBadgeText.text = "😈 HARD";
-                difficultyBadgeText.color = new Color(255f/255f, 107f/255f, 107f/255f); // Coral
+                difficultyBadgeText.text = "HARD";
+                ColorUtility.TryParseHtmlString("#EF4444", out Color hardCol);
+                difficultyBadgeText.color = hardCol;
                 break;
         }
     }
 
+    [ContextMenu("Test Open Settings")]
     public void OpenSettings()
     {
         if (settingsModal == null) return;
         AudioManager.Instance?.PlayUIClickSound();
         settingsModal.gameObject.SetActive(true);
-        settingsModal.alpha = 0f;
+        settingsModal.alpha = 1f; // The CanvasGroup itself is fully visible, children will fade
         settingsModal.interactable = true;
         settingsModal.blocksRaycasts = true;
-        settingsModal.DOFade(1f, 0.25f);
-        settingsModal.transform.localScale = Vector3.one * 0.9f;
-        settingsModal.transform.DOScale(Vector3.one, 0.25f).SetEase(Ease.OutBack);
+
+        var bg = settingsModal.transform.Find("Bg")?.GetComponent<UnityEngine.UI.Image>();
+        var card = settingsModal.transform.Find("Card");
+
+        if (bg != null)
+        {
+            Color c = bg.color;
+            c.a = 0f;
+            bg.color = c;
+            bg.DOFade(0.6f, 0.2f);
+        }
+
+        if (card != null)
+        {
+            card.localScale = Vector3.zero;
+            card.DOScale(Vector3.one, 0.25f).SetEase(Ease.OutBack);
+        }
+
+        UpdateSettingsUI();
+    }
+
+    [ContextMenu("Test Game Over (Victory)")]
+    private void TestGameOverVictory()
+    {
+        ShowGameOver(true);
     }
 
     public void CloseSettings()
@@ -518,8 +726,84 @@ public class UIManager : MonoBehaviour
         if (settingsModal == null) return;
         AudioManager.Instance?.PlayUIClickSound();
         settingsModal.interactable = false;
-        settingsModal.blocksRaycasts = false;
-        settingsModal.DOFade(0f, 0.2f).OnComplete(() => settingsModal.gameObject.SetActive(false));
+
+        var bg = settingsModal.transform.Find("Bg")?.GetComponent<UnityEngine.UI.Image>();
+        var card = settingsModal.transform.Find("Card");
+
+        if (bg != null) bg.DOFade(0f, 0.18f);
+
+        if (card != null)
+        {
+            card.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack).OnComplete(() =>
+            {
+                settingsModal.blocksRaycasts = false;
+                settingsModal.gameObject.SetActive(false);
+            });
+        }
+        else
+        {
+            settingsModal.blocksRaycasts = false;
+            settingsModal.gameObject.SetActive(false);
+        }
+    }
+
+    public void ToggleSFX()
+    {
+        AudioManager.Instance?.PlayUIClickSound();
+        AudioManager.Instance?.ToggleSFX();
+        PunchToggleUI("SfxToggleBtn");
+        UpdateSettingsUI();
+    }
+
+    public void ToggleMusic()
+    {
+        AudioManager.Instance?.PlayUIClickSound();
+        AudioManager.Instance?.ToggleMusic();
+        PunchToggleUI("MusicToggleBtn");
+        UpdateSettingsUI();
+    }
+
+    public void ToggleHaptics()
+    {
+        AudioManager.Instance?.PlayUIClickSound();
+        AudioManager.Instance?.ToggleHaptics();
+        PunchToggleUI("HapticsToggleBtn");
+        UpdateSettingsUI();
+    }
+
+    private void PunchToggleUI(string name)
+    {
+        if (settingsModal == null) return;
+        var btn = settingsModal.transform.Find("Card/" + name);
+        if (btn != null)
+        {
+            btn.DOPunchScale(Vector3.one * buttonPunchScale, buttonPunchDuration);
+        }
+    }
+
+    private void UpdateSettingsUI()
+    {
+        if (settingsModal == null) return;
+        var am = AudioManager.Instance;
+        if (am == null) return;
+
+        UpdateToggleVisuals("Card/SfxToggleBtn", "SFX: ON", "SFX: OFF", am.IsSFXEnabled);
+        UpdateToggleVisuals("Card/MusicToggleBtn", "MUSIC: ON", "MUSIC: OFF", am.IsMusicEnabled);
+        UpdateToggleVisuals("Card/HapticsToggleBtn", "VIBRATION: ON", "VIBRATION: OFF", am.IsHapticsEnabled);
+    }
+
+    private void UpdateToggleVisuals(string path, string textOn, string textOff, bool isOn)
+    {
+        var btn = settingsModal.transform.Find(path);
+        if (btn == null) return;
+
+        var tmp = btn.GetComponentInChildren<TextMeshProUGUI>();
+        if (tmp != null)
+        {
+            tmp.text = isOn ? textOn : textOff;
+            ColorUtility.TryParseHtmlString(isOn ? "#10B981" : "#94A3B8", out Color col); // Jade / Slate
+            tmp.color = col;
+        }
     }
 
     private void OnDestroy()

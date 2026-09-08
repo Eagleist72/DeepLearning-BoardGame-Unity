@@ -11,8 +11,12 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    public static GameMode CurrentMode = GameMode.VsAI;
-    public static AIDifficulty CurrentDifficulty = AIDifficulty.Hard;
+    public static GameMode ActiveMode { get; set; } = GameMode.VsAI;
+    public static AIDifficulty ActiveDifficulty { get; set; } = AIDifficulty.Hard;
+
+    // Aliases for backward compatibility
+    public static GameMode CurrentMode { get => ActiveMode; set => ActiveMode = value; }
+    public static AIDifficulty CurrentDifficulty { get => ActiveDifficulty; set => ActiveDifficulty = value; }
 
     [Header("References")]
     public GameSettings gameSettings;
@@ -65,8 +69,8 @@ public class GameManager : MonoBehaviour
 
     public void StartGameSequence(GameMode mode, AIDifficulty diff)
     {
-        CurrentMode = mode;
-        CurrentDifficulty = diff;
+        ActiveMode = mode;
+        ActiveDifficulty = diff;
         
         // Reset board logic if starting from menu after previous game?
         // Let's assume SceneManager handles restart, so we just set initial turn here.
@@ -156,10 +160,16 @@ public class GameManager : MonoBehaviour
             Vector3 targetWorldPos = targetTile.transform.position + Vector3.up * 0.5f;
 
             AudioManager.Instance?.PlayMoveSound();
-            aiPieceTransform.DOMove(targetWorldPos, gameSettings.pieceMoveDuration).SetEase(Ease.InOutQuad).OnComplete(() =>
-            {
-                AnimateTileRemovalAndFinishTurn(removePos);
-            });
+            
+            // Hop up slightly as the piece moves
+            aiPieceTransform.DOJump(targetWorldPos, gameSettings.jumpPower, 1, gameSettings.jumpDuration)
+                .SetEase(Ease.OutQuad)
+                .OnComplete(() =>
+                {
+                    // Subtle squash/stretch upon landing
+                    aiPieceTransform.DOPunchScale(new Vector3(0.15f, -0.15f, 0.15f), 0.2f);
+                    AnimateTileRemovalAndFinishTurn(removePos);
+                });
         }
         else
         {

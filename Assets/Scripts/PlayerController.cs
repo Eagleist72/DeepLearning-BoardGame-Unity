@@ -81,7 +81,7 @@ public class PlayerController : MonoBehaviour
     {
         Vector2Int pos = (state == GameState.PlayerMovePhase) ? GameManager.Instance.playerPos : GameManager.Instance.aiPos;
         List<Vector2Int> validMoves = GameManager.Instance.GetNeighbors(pos);
-        GridManager.Instance.HighlightTiles(validMoves, true);
+        GridManager.Instance.HighlightTiles(validMoves, HighlightType.Move);
     }
 
     private void ShowRemoveHighlights()
@@ -105,7 +105,7 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        GridManager.Instance.HighlightTiles(removable, true);
+        GridManager.Instance.HighlightTiles(removable, HighlightType.Remove);
     }
 
     private void HandleInteraction(Vector2 screenPos)
@@ -145,7 +145,7 @@ public class PlayerController : MonoBehaviour
             selectedMovePos = targetPos;
             GameObject targetTile = GridManager.Instance.GetTileAt(targetPos.x, targetPos.y);
 
-            float moveDuration = GameManager.Instance.gameSettings.pieceMoveDuration;
+            float moveDuration = GameManager.Instance.gameSettings.jumpDuration;
             Vector3 targetWorldPos = targetTile.transform.position + Vector3.up * 0.5f;
 
             AudioManager.Instance?.PlayMoveSound();
@@ -153,13 +153,19 @@ public class PlayerController : MonoBehaviour
             
             Transform pieceToMove = (playerId == 2) ? GameManager.Instance.playerPieceTransform : GameManager.Instance.aiPieceTransform;
 
-            pieceToMove.DOMove(targetWorldPos, moveDuration).SetEase(Ease.InOutQuad).OnComplete(() =>
-            {
-                GridManager.Instance.ClearAllHighlights();
-                GameManager.Instance.currentState = (playerId == 2) ? GameState.PlayerRemovePhase : GameState.Player2RemovePhase;
-                ShowRemoveHighlights();
-                GameManager.Instance.isExecutingTurn = false;
-            });
+            pieceToMove.DOJump(targetWorldPos, GameManager.Instance.gameSettings.jumpPower, 1, moveDuration)
+                .SetEase(Ease.OutQuad)
+                .OnComplete(() =>
+                {
+                    pieceToMove.DOPunchScale(new Vector3(0.15f, -0.15f, 0.15f), 0.2f);
+                    GridManager.Instance.ClearAllHighlights();
+                    GameManager.Instance.currentState = (playerId == 2) ? GameState.PlayerRemovePhase : GameState.Player2RemovePhase;
+                    
+                    if (UIManager.Instance != null) UIManager.Instance.UpdateTurnStatus(GameManager.Instance.currentState);
+                    
+                    ShowRemoveHighlights();
+                    GameManager.Instance.isExecutingTurn = false;
+                });
         }
     }
 

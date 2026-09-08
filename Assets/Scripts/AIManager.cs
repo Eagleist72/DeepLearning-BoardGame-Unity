@@ -2,12 +2,20 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.InferenceEngine; // Updated library name
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class AIManager : MonoBehaviour
 {
     [Header("AI Configuration")]
     [Tooltip("Drag and drop the ai_brain.onnx model here")]
-    public ModelAsset onnxModelAsset;
+    [SerializeField] private ModelAsset onnxModelAsset;
+
+    [Header("AI Intelligence Tuning")]
+    [Range(0f, 1f)] [Tooltip("Probability of random moves when in EASY mode (0 = smart, 1 = purely random)")]
+    [SerializeField] private float easyRandomWeight = 0.5f;
+    
+    [Range(0.1f, 2.0f)] [Tooltip("Softmax temperature for MEDIUM mode (higher = more varied moves)")]
+    [SerializeField] private float mediumTemperature = 0.5f;
 
     private Model runtimeModel;
     private Worker worker; // Using Worker instead of IWorker
@@ -48,10 +56,10 @@ public class AIManager : MonoBehaviour
         }
 
         MoveData selectedMove = validMoves[0];
-        AIDifficulty diff = GameManager.CurrentDifficulty;
+        AIDifficulty diff = GameManager.ActiveDifficulty;
 
-        // EASY: 50% chance of making a completely random valid move
-        if (diff == AIDifficulty.Easy && Random.value < 0.5f)
+        // EASY: chance of making a completely random valid move
+        if (diff == AIDifficulty.Easy && Random.value < easyRandomWeight)
         {
             selectedMove = validMoves[Random.Range(0, validMoves.Count)];
         }
@@ -85,7 +93,7 @@ public class AIManager : MonoBehaviour
             else if (diff == AIDifficulty.Medium)
             {
                 // Medium: Softmax temperature sampling over top moves to add variance without being completely dumb
-                float temperature = 0.5f;
+                float temperature = mediumTemperature;
                 float sumExp = 0f;
                 
                 // Limit to top 5 moves to ensure it's not completely random

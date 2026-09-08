@@ -15,9 +15,15 @@ public class AudioManager : MonoBehaviour
 
     // Pre-allocated pool of AudioSource components (no runtime instantiation)
     private AudioSource[] audioSourcePool;
+    private AudioSource musicSource;
 
     // Round-robin index to distribute playback across the pool evenly
     private int nextSourceIndex;
+
+    // Settings State
+    public bool IsSFXEnabled { get; private set; } = true;
+    public bool IsMusicEnabled { get; private set; } = true;
+    public bool IsHapticsEnabled { get; private set; } = true;
 
     private void Awake()
     {
@@ -28,7 +34,71 @@ public class AudioManager : MonoBehaviour
         }
         Instance = this;
 
+        LoadSettings();
         InitializeAudioSourcePool();
+        InitializeMusicSource();
+    }
+
+    private void LoadSettings()
+    {
+        IsSFXEnabled = PlayerPrefs.GetInt("Setting_SFX", 1) == 1;
+        IsMusicEnabled = PlayerPrefs.GetInt("Setting_Music", 1) == 1;
+        IsHapticsEnabled = PlayerPrefs.GetInt("Setting_Haptics", 1) == 1;
+    }
+
+    private void InitializeMusicSource()
+    {
+        GameObject bgmObj = new GameObject("BackgroundMusicSource");
+        bgmObj.transform.SetParent(transform);
+        musicSource = bgmObj.AddComponent<AudioSource>();
+        musicSource.loop = true;
+        musicSource.volume = gameSettings != null ? gameSettings.masterVolume * 0.5f : 0.5f;
+        musicSource.mute = !IsMusicEnabled;
+        
+        // If there's a music clip in gameSettings, play it. 
+        // (Assuming you'll add it to GameSettings, or we just leave it ready)
+        // musicSource.Play();
+    }
+
+    public void ToggleSFX()
+    {
+        IsSFXEnabled = !IsSFXEnabled;
+        PlayerPrefs.SetInt("Setting_SFX", IsSFXEnabled ? 1 : 0);
+        PlayerPrefs.Save();
+        
+        foreach (var source in audioSourcePool)
+        {
+            source.mute = !IsSFXEnabled;
+        }
+    }
+
+    public void ToggleMusic()
+    {
+        IsMusicEnabled = !IsMusicEnabled;
+        PlayerPrefs.SetInt("Setting_Music", IsMusicEnabled ? 1 : 0);
+        PlayerPrefs.Save();
+        
+        if (musicSource != null)
+        {
+            musicSource.mute = !IsMusicEnabled;
+        }
+    }
+
+    public void ToggleHaptics()
+    {
+        IsHapticsEnabled = !IsHapticsEnabled;
+        PlayerPrefs.SetInt("Setting_Haptics", IsHapticsEnabled ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public void TriggerHaptic()
+    {
+        if (IsHapticsEnabled)
+        {
+#if UNITY_ANDROID || UNITY_IOS
+            Handheld.Vibrate();
+#endif
+        }
     }
 
     /// <summary>
@@ -48,6 +118,7 @@ public class AudioManager : MonoBehaviour
 
             AudioSource source = sourceObj.AddComponent<AudioSource>();
             source.playOnAwake = false;
+            source.mute = !IsSFXEnabled; // Apply initial SFX setting
             source.loop = false;
             source.spatialBlend = 0f; // 2D sound (UI/board game)
 
@@ -99,6 +170,7 @@ public class AudioManager : MonoBehaviour
         {
             PlaySFX(gameSettings.tileRemoveClip);
         }
+        TriggerHaptic();
     }
 
     /// <summary>
@@ -121,6 +193,7 @@ public class AudioManager : MonoBehaviour
         {
             PlaySFX(gameSettings.victoryClip, 1f, 0f);
         }
+        TriggerHaptic();
     }
 
     /// <summary>

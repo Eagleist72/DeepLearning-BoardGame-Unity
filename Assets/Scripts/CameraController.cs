@@ -1,10 +1,10 @@
 using UnityEngine;
+using System;
 using DG.Tweening;
 
 /// <summary>
-/// Singleton Camera Controller responsible for responsive mobile framing and screen shake.
-/// Adjusts the camera position and FOV based on the board size and current screen aspect ratio.
-/// Uses DOTween for non-allocating screen shakes.
+/// Singleton Camera Controller responsible for cinematic framing transitions and screen shake.
+/// Uses DOTween for smooth, non-allocating camera movements.
 /// </summary>
 [RequireComponent(typeof(Camera))]
 public class CameraController : MonoBehaviour
@@ -12,21 +12,30 @@ public class CameraController : MonoBehaviour
     public static CameraController Instance { get; private set; }
 
     [Header("References")]
-    public GameSettings gameSettings;
     private Camera cam;
 
-    [Header("Framing Settings")]
-    [Tooltip("Extra padding around the board (in Unity units or FOV adjustment)")]
-    public float boardPadding = 2f;
-    [Tooltip("Angle of the camera looking down at the board")]
-    public float cameraAngleX = 50f;
-    [Tooltip("Base distance from the board center")]
-    public float baseDistance = 8f;
+    [Header("Framing Presets")]
+    [Tooltip("Camera position & rotation for Main Menu overview")]
+    [SerializeField] private Vector3 menuPosition = new Vector3(0f, 13.5f, -11.5f);
+    [SerializeField] private Vector3 menuRotation = new Vector3(54f, 0f, 0f);
+
+    [Tooltip("Camera position & rotation for Active In-Game view")]
+    [SerializeField] private Vector3 gamePosition = new Vector3(0f, 10.5f, -8f);
+    [SerializeField] private Vector3 gameRotation = new Vector3(46f, 0f, 0f);
+
+    [Header("Animation Durations")]
+    [Range(0.1f, 2.0f)] [Tooltip("Transition time from menu to game")]
+    [SerializeField] private float transitionToGameDuration = 0.65f;
+    [Range(0.1f, 2.0f)] [Tooltip("Transition time from game to menu")]
+    [SerializeField] private float transitionToMenuDuration = 0.5f;
+    [Tooltip("Easing curve used for camera sweeps")]
+    [SerializeField] private Ease transitionEase = Ease.InOutCubic;
 
     // Cache to prevent floating point drift after multiple shakes
     private Vector3 originalLocalPosition;
     private Tween shakeTween;
-    private float lastAspect;
+    private Tween moveTween;
+    private Tween rotateTween;
 
     private void Awake()
     {
@@ -41,69 +50,67 @@ public class CameraController : MonoBehaviour
 
     private void Start()
     {
-        FrameBoard();
+        // Initial State on Boot: Camera starts at MenuFraming
+        transform.position = menuPosition;
+        transform.rotation = Quaternion.Euler(menuRotation);
         originalLocalPosition = transform.localPosition;
-        lastAspect = (float)Screen.width / Screen.height;
-    }
-
-    private void Update()
-    {
-        float currentAspect = (float)Screen.width / Screen.height;
-        // Dynamically re-frame if the screen is resized or rotated (e.g., orientation change)
-        if (Mathf.Abs(currentAspect - lastAspect) > 0.01f)
-        {
-            lastAspect = currentAspect;
-            // Kill any active shakes before reframing to avoid capturing wrong local position
-            shakeTween?.Kill(true);
-            FrameBoard();
-            originalLocalPosition = transform.localPosition;
-        }
     }
 
     /// <summary>
-    /// Calculates the board's center and adjusts the camera's position and field of view 
-    /// to ensure the entire grid fits comfortably on screen, regardless of portrait or landscape.
+    /// Smoothly transitions the camera from Menu framing to Game framing.
     /// </summary>
-    private void FrameBoard()
+    public void TransitionToGame(Action onComplete = null)
     {
-        if (gameSettings == null || cam == null) return;
+        moveTween?.Kill();
+        rotateTween?.Kill();
 
-        int size = gameSettings.boardSize;
-        float offset = gameSettings.tileOffset;
+        moveTween = transform.DOMove(gamePosition, transitionToGameDuration)
+            .SetEase(transitionEase)
+            .SetUpdate(true);
+            
+        rotateTween = transform.DORotate(gameRotation, transitionToGameDuration)
+            .SetEase(transitionEase)
+            .SetUpdate(true)
+            .OnComplete(() =>
+            {
+                originalLocalPosition = transform.localPosition;
+                onComplete?.Invoke();
+            });
+    }
 
-        // The GridManager perfectly centers the board at (0, 0, 0)
-        Vector3 boardCenter = Vector3.zero;
+    /// <summary>
+    /// Smoothly transitions the camera back to Menu framing.
+    /// </summary>
+    public void TransitionToMenu(Action onComplete = null)
+    {
+        moveTween?.Kill();
+        rotateTween?.Kill();
 
-        // Position the camera
-        // Set rotation to face negative Z (180 degrees on Y) with the downward angle
-        transform.rotation = Quaternion.Euler(cameraAngleX, 180f, 0f);
+        moveTween = transform.DOMove(menuPosition, transitionToMenuDuration)
+            .SetEase(transitionEase)
+            .SetUpdate(true);
+            
+        rotateTween = transform.DORotate(menuRotation, transitionToMenuDuration)
+            .SetEase(transitionEase)
+            .SetUpdate(true)
+            .OnComplete(() =>
+            {
+                originalLocalPosition = transform.localPosition;
+                onComplete?.Invoke();
+            });
+    }
 
-        // Move the camera back and up based on the angle
-        float radAngle = cameraAngleX * Mathf.Deg2Rad;
-        float yPos = Mathf.Sin(radAngle) * baseDistance;
-        float zOffset = Mathf.Cos(radAngle) * baseDistance;
-        
-        // Since we are rotated 180 degrees on Y, the camera should be at positive Z offset
-        Vector3 desiredPosition = boardCenter + new Vector3(0f, yPos, zOffset);
-        transform.position = desiredPosition;
+    private void OnDrawGizmosSelected()
+    {
+        // Draw Menu Framing
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(menuPosition, 0.5f);
+        Gizmos.DrawRay(menuPosition, Quaternion.Euler(menuRotation) * Vector3.forward * 5f);
 
-        // Calculate required size to fit the board width and depth
-        float boardPhysicalWidth = size * offset;
-        
-        // Dynamic FOV calculation based on aspect ratio
-        float aspect = (float)Screen.width / Screen.height;
-        float requiredSize = (boardPhysicalWidth / 2f) + boardPadding;
-
-        if (aspect < 1f)
-        {
-            // Portrait mode: Width is the limiting factor
-            requiredSize /= aspect;
-        }
-        // Landscape mode: Height is typically the limiting factor, requiredSize remains as is
-
-        // Use trigonometry to find the right FOV to fit 'requiredSize' at 'baseDistance'
-        float desiredFOV = 2f * Mathf.Atan(requiredSize / baseDistance) * Mathf.Rad2Deg;
-        cam.fieldOfView = Mathf.Clamp(desiredFOV, 30f, 90f);
+        // Draw Game Framing
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(gamePosition, 0.5f);
+        Gizmos.DrawRay(gamePosition, Quaternion.Euler(gameRotation) * Vector3.forward * 5f);
     }
 
     /// <summary>
@@ -130,15 +137,16 @@ public class CameraController : MonoBehaviour
             shakeTween.Kill(true); // Complete=true returns it to start before next shake
         }
         
-        // Reset to original local position manually just in case
         transform.localPosition = originalLocalPosition;
 
         shakeTween = transform.DOShakePosition(duration, strength, vibrato, 90f, false, true)
-            .SetUpdate(true); // Ignore timeScale for UI/Juice
+            .SetUpdate(true);
     }
 
     private void OnDestroy()
     {
         shakeTween?.Kill();
+        moveTween?.Kill();
+        rotateTween?.Kill();
     }
 }

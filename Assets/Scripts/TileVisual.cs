@@ -6,6 +6,8 @@ using DG.Tweening;
 /// Attach to the Tile prefab. Uses MaterialPropertyBlock to avoid runtime GC allocations
 /// from material instance creation, and DOTween for smooth color/scale transitions.
 /// </summary>
+public enum HighlightType { None, Move, Remove }
+
 [RequireComponent(typeof(Renderer))]
 public class TileVisual : MonoBehaviour
 {
@@ -14,16 +16,22 @@ public class TileVisual : MonoBehaviour
     private MaterialPropertyBlock propBlock;
     private GameSettings gameSettings;
 
-    // --- Tween References (cached to allow kill-before-reassign) ---
+    // --- Tween References ---
     private Tween colorTween;
     private Tween scaleTween;
 
+    [Header("Collapse Animations")]
+    [Tooltip("Shake and fall parameters when tile is destroyed")]
+    [SerializeField] private float shakeDuration = 0.15f;
+    [SerializeField] private float shakeStrength = 0.05f;
+    [SerializeField] private float fallDistance = 4.0f;
+    [SerializeField] private float fallDuration = 0.4f;
+
     // --- State Tracking ---
     private Color currentColor;
-    private bool isHighlighted;
+    private HighlightType currentHighlight = HighlightType.None;
     private Vector3 initialScale;
 
-    // Shader property ID cached once to avoid string hashing every frame
     private static readonly int ColorPropertyId = Shader.PropertyToID("_Color");
 
     private void Awake()
@@ -33,32 +41,42 @@ public class TileVisual : MonoBehaviour
         initialScale = transform.localScale;
     }
 
-    /// <summary>
-    /// Initializes the component with a reference to the shared GameSettings asset.
-    /// Must be called once after the tile is first spawned or retrieved from the pool.
-    /// </summary>
     public void Initialize(GameSettings settings)
     {
         gameSettings = settings;
         ResetVisual();
     }
 
-    /// <summary>
-    /// Toggles the highlight state with a smooth color fade using DOTween.
-    /// When highlighted, the tile fades to <see cref="GameSettings.highlightColor"/>.
-    /// When unhighlighted, it fades back to <see cref="GameSettings.defaultTileColor"/>.
-    /// </summary>
-    /// <param name="highlighted">True to highlight, false to return to default.</param>
-    public void SetHighlight(bool highlighted)
+    public void SetHighlight(HighlightType type)
     {
         if (gameSettings == null) return;
-        if (isHighlighted == highlighted) return; // No-op if already in desired state
+        if (currentHighlight == type) return;
 
-        isHighlighted = highlighted;
-        Color targetColor = highlighted ? gameSettings.highlightColor : gameSettings.defaultTileColor;
+        currentHighlight = type;
 
-        // Kill any in-progress color tween before starting a new one
         colorTween?.Kill();
+        scaleTween?.Kill();
+
+        Color targetColor;
+        
+        switch (type)
+        {
+            case HighlightType.Move:
+                targetColor = new Color(245f/255f, 158f/255f, 11f/255f); // Amber / Gold
+                scaleTween = transform.DOScale(initialScale * 1.05f, 0.6f)
+                    .SetEase(Ease.InOutSine)
+                    .SetLoops(-1, LoopType.Yoyo)
+                    .SetTarget(gameObject);
+                break;
+            case HighlightType.Remove:
+                targetColor = new Color(239f/255f, 68f/255f, 68f/255f); // Red / Crimson
+                transform.localScale = initialScale; // No pulsing for remove
+                break;
+            default:
+                targetColor = gameSettings.defaultTileColor;
+                transform.localScale = initialScale;
+                break;
+        }
 
         colorTween = DOTween.To(
             () => currentColor,
@@ -66,14 +84,9 @@ public class TileVisual : MonoBehaviour
             targetColor,
             gameSettings.tileFadeDuration
         ).SetEase(Ease.OutQuad)
-         .SetTarget(gameObject); // Link tween lifecycle to this GameObject
+         .SetTarget(gameObject);
     }
 
-    /// <summary>
-    /// Plays the tile removal animation: shrinks scale to zero with Ease.InBack,
-    /// then invokes the callback (typically to return to ObjectPooler).
-    /// </summary>
-    /// <param name="onComplete">Callback invoked after the shrink animation finishes.</param>
     public void PlayRemoveAnimation(System.Action onComplete)
     {
         if (gameSettings == null)
@@ -82,42 +95,50 @@ public class TileVisual : MonoBehaviour
             return;
         }
 
-        // Kill any existing tweens to prevent conflicts
         colorTween?.Kill();
         scaleTween?.Kill();
 
-        scaleTween = transform.DOScale(Vector3.zero, gameSettings.tileFadeDuration)
-            .SetEase(Ease.InBack)
-            .SetTarget(gameObject)
-            .OnComplete(() =>
-            {
-                onComplete?.Invoke();
-            });
+        // 1. Shake, 2. Drop + Fade out
+        Sequence seq = DOTween.Sequence();
+        
+        seq.Append(transform.DOShakePosition(shakeDuration, shakeStrength));
+        seq.Append(transform.DOMoveY(transform.position.y - fallDistance, fallDuration).SetEase(Ease.InCubic));
+        
+        colorTween = DOTween.To(
+            () => currentColor,
+            color => SetColor(color),
+            new Color(currentColor.r, currentColor.g, currentColor.b, 0f),
+            0.4f
+        ).SetEase(Ease.InCubic).SetTarget(gameObject);
+
+        seq.OnComplete(() =>
+        {
+            onComplete?.Invoke();
+        });
+        
+        seq.SetTarget(gameObject);
+        scaleTween = seq; // Assign sequence to scaleTween to track it for killing
     }
 
-    /// <summary>
-    /// Resets the tile's visual state to default. Call when spawning from ObjectPooler
-    /// to ensure a clean slate (full scale, default color, no active tweens).
-    /// </summary>
     public void ResetVisual()
     {
-        // Kill any lingering tweens from a previous lifecycle
         colorTween?.Kill();
         scaleTween?.Kill();
         colorTween = null;
         scaleTween = null;
 
-        isHighlighted = false;
+        currentHighlight = HighlightType.None;
         transform.localScale = initialScale;
 
-        // Apply default color immediately (no tween)
+        // Reset position Y in case it was dropped
+        Vector3 pos = transform.position;
+        pos.y = 0f;
+        transform.position = pos;
+
         Color defaultColor = gameSettings != null ? gameSettings.defaultTileColor : Color.white;
         SetColor(defaultColor);
     }
 
-    /// <summary>
-    /// Applies a color to the renderer via MaterialPropertyBlock (zero GC allocation).
-    /// </summary>
     private void SetColor(Color color)
     {
         currentColor = color;
@@ -128,7 +149,6 @@ public class TileVisual : MonoBehaviour
 
     private void OnDisable()
     {
-        // Ensure tweens are cleaned up when the object returns to the pool
         colorTween?.Kill();
         scaleTween?.Kill();
         colorTween = null;

@@ -10,8 +10,10 @@ public class GameSettings : ScriptableObject
     [Tooltip("World space offset distance between tiles")]
     public float tileOffset = 1.1f;
 
-    [Header("Animation & Timing (DOTween)")]
-    public float pieceMoveDuration = 0.4f;
+    [Header("Collapse & Movement Animations")]
+    [Tooltip("Duration and height of the piece hop jump")]
+    public float jumpDuration = 0.4f;
+    public float jumpPower = 0.6f;
     public float tileFadeDuration = 0.3f;
 
     [Tooltip("Artificial delay for AI decision making to prevent abrupt turns")]

@@ -107,14 +107,14 @@ public class GridManager : MonoBehaviour
     /// </summary>
     /// <param name="positions">Board coordinates to toggle.</param>
     /// <param name="highlight">True to highlight, false to unhighlight.</param>
-    public void HighlightTiles(List<Vector2Int> positions, bool highlight)
+    public void HighlightTiles(List<Vector2Int> positions, HighlightType type)
     {
         for (int i = 0; i < positions.Count; i++)
         {
             TileVisual visual = GetTileVisualAt(positions[i].x, positions[i].y);
             if (visual != null)
             {
-                visual.SetHighlight(highlight);
+                visual.SetHighlight(type);
             }
         }
     }
@@ -132,7 +132,7 @@ public class GridManager : MonoBehaviour
                 TileVisual visual = tileVisualGrid[r, c];
                 if (visual != null)
                 {
-                    visual.SetHighlight(false);
+                    visual.SetHighlight(HighlightType.None);
                 }
             }
         }
