@@ -12,6 +12,15 @@ public class AudioManager : MonoBehaviour
     [Header("Settings")]
     public GameSettings gameSettings;
 
+    [Header("Volume Levels (0 - 1)")]
+    [Range(0f, 1f)] [SerializeField] private float masterVolume = 1.0f;
+    [Range(0f, 1f)] [SerializeField] private float sfxVolume = 1.0f;
+    [Range(0f, 1f)] [SerializeField] private float musicVolume = 0.7f;
+
+    public float MasterVolume { get => masterVolume; set { masterVolume = Mathf.Clamp01(value); ApplyVolumes(); } }
+    public float SfxVolume { get => sfxVolume; set { sfxVolume = Mathf.Clamp01(value); ApplyVolumes(); } }
+    public float MusicVolume { get => musicVolume; set { musicVolume = Mathf.Clamp01(value); ApplyVolumes(); } }
+
     [Header("UI SFX")]
     public AudioClip buttonClickClip;
     public AudioClip toggleClip;
@@ -58,13 +67,40 @@ public class AudioManager : MonoBehaviour
         IsHapticsEnabled = PlayerPrefs.GetInt("Setting_Haptics", 1) == 1;
     }
 
+    private void OnValidate()
+    {
+        if (Application.isPlaying)
+        {
+            ApplyVolumes();
+        }
+    }
+
+    private void ApplyVolumes()
+    {
+        if (musicSource != null)
+        {
+            musicSource.volume = musicVolume * masterVolume * (IsMusicEnabled ? 1f : 0f);
+        }
+
+        if (audioSourcePool != null)
+        {
+            foreach (AudioSource source in audioSourcePool)
+            {
+                if (source != null && source.isPlaying)
+                {
+                    source.volume = sfxVolume * masterVolume;
+                }
+            }
+        }
+    }
+
     private void InitializeMusicSource()
     {
         GameObject bgmObj = new GameObject("BackgroundMusicSource");
         bgmObj.transform.SetParent(transform);
         musicSource = bgmObj.AddComponent<AudioSource>();
         musicSource.loop = true;
-        musicSource.volume = gameSettings != null ? gameSettings.masterVolume * 0.5f : 0.5f;
+        ApplyVolumes();
         musicSource.mute = !IsMusicEnabled;
         
         if (bgmClip != null)
@@ -140,8 +176,7 @@ public class AudioManager : MonoBehaviour
         if (clip == null || !IsSFXEnabled) return;
 
         AudioSource source = GetNextAudioSource();
-        float masterVol = gameSettings != null ? gameSettings.masterVolume * gameSettings.sfxVolume : 1f;
-        source.volume = masterVol * volume;
+        source.volume = volume * sfxVolume * masterVolume;
 
         if (randomizePitch)
         {
