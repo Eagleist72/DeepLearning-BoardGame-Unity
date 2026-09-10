@@ -44,8 +44,22 @@ public class UIManager : MonoBehaviour
     [Header("UI Panels & CanvasGroups")]
     [SerializeField] private CanvasGroup mainMenuPanel;
     [SerializeField] private CanvasGroup gameHUDPanel;
-    [SerializeField] private CanvasGroup settingsModal;
     
+    [Header("Settings Modal")]
+    [SerializeField] private GameObject settingsModal;
+    [SerializeField] private RectTransform settingsCard;
+    [SerializeField] private CanvasGroup settingsModalCanvasGroup;
+    [SerializeField] private Button settingsBtn;
+    [SerializeField] private Button closeSettingsBtn;
+
+    [Header("How To Play Modal")]
+    [SerializeField] private GameObject howToPlayModal;
+    [SerializeField] private RectTransform howToPlayCard;
+    [SerializeField] private CanvasGroup howToPlayCanvasGroup;
+    [SerializeField] private Button howToPlayBtn;
+    [SerializeField] private Button closeHowToPlayBtn;
+
+    [Header("Menu Buttons")]
     [Tooltip("Text element for difficulty badge on menu (e.g. 'MEDIUM')")]
     [SerializeField] private TextMeshProUGUI difficultyBadgeText;
     
@@ -53,11 +67,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button playVsBotBtn;
     [SerializeField] private Button playPassAndPlayBtn;
     [SerializeField] private Button difficultyToggleBtn;
-    [SerializeField] private Button closeSettingsBtn;
     [SerializeField] private Button sfxToggleBtn;
     [SerializeField] private Button musicToggleBtn;
     [SerializeField] private Button hapticsToggleBtn;
-    [SerializeField] private Button mainMenuSettingsBtn;
 
     [Header("Score Header")]
     [Tooltip("TextMeshProUGUI for Player score")]
@@ -140,33 +152,12 @@ public class UIManager : MonoBehaviour
         // --- Auto-wire panels (fallback if Inspector refs are missing) ---
         AutoWireCanvasGroup(ref mainMenuPanel, "MainMenuPanel");
         AutoWireCanvasGroup(ref gameHUDPanel, "GameHUDPanel");
-        AutoWireCanvasGroup(ref settingsModal, "SettingsModal");
 
         // --- Auto-wire buttons ---
         AutoWireButton(ref playVsBotBtn, "PlayVsBotButton");
         AutoWireButton(ref playPassAndPlayBtn, "PassPlayButton");
         AutoWireButton(ref difficultyToggleBtn, "DifficultyBadge");
-        AutoWireButton(ref closeSettingsBtn, "CloseBtn");
-        AutoWireButton(ref sfxToggleBtn, "SfxToggleBtn");
-        AutoWireButton(ref musicToggleBtn, "MusicToggleBtn");
-        AutoWireButton(ref hapticsToggleBtn, "HapticsToggleBtn");
-        AutoWireButton(ref mainMenuSettingsBtn, "SettingsButton"); // Will find one of them, but we have two
         
-        // Wire the background overlay to close the modal
-        Button closeOverlayBtn = null;
-        if (settingsModal != null)
-        {
-            var bgTransform = settingsModal.transform.Find("Bg");
-            if (bgTransform != null) closeOverlayBtn = bgTransform.GetComponent<Button>();
-        }
-
-        // Wait, AutoWireButton finds by name globally in UICanvas. We have two "SettingsButton". Let's explicitly find the MainMenu one if null.
-        if (mainMenuSettingsBtn == null && mainMenuPanel != null)
-        {
-            var mmBtn = mainMenuPanel.transform.Find("SettingsButton");
-            if (mmBtn != null) mainMenuSettingsBtn = mmBtn.GetComponent<Button>();
-        }
-
         // --- Auto-wire TMP text fields via hierarchy path ---
         AutoWireTMP(ref playerScoreText, "GameHUDPanel/ScoreHeaderCard/PlayerScoreText");
         AutoWireTMP(ref aiScoreText, "GameHUDPanel/ScoreHeaderCard/AIScoreText");
@@ -177,10 +168,12 @@ public class UIManager : MonoBehaviour
         if (playVsBotBtn != null) playVsBotBtn.onClick.AddListener(() => StartGame(0));
         if (playPassAndPlayBtn != null) playPassAndPlayBtn.onClick.AddListener(() => StartGame(1));
         if (difficultyToggleBtn != null) difficultyToggleBtn.onClick.AddListener(ToggleAIDifficulty);
+        
+        if (settingsBtn != null) settingsBtn.onClick.AddListener(OpenSettings);
         if (closeSettingsBtn != null) closeSettingsBtn.onClick.AddListener(CloseSettings);
-        if (closeOverlayBtn != null) closeOverlayBtn.onClick.AddListener(CloseSettings);
-        if (settingsButton != null) settingsButton.onClick.AddListener(OpenSettings); // HUD settings
-        if (mainMenuSettingsBtn != null) mainMenuSettingsBtn.onClick.AddListener(OpenSettings); // Main menu settings
+        
+        if (howToPlayBtn != null) howToPlayBtn.onClick.AddListener(OpenHowToPlay);
+        if (closeHowToPlayBtn != null) closeHowToPlayBtn.onClick.AddListener(CloseHowToPlay);
         
         if (sfxToggleBtn != null) sfxToggleBtn.onClick.AddListener(ToggleSFX);
         if (musicToggleBtn != null) musicToggleBtn.onClick.AddListener(ToggleMusic);
@@ -190,7 +183,7 @@ public class UIManager : MonoBehaviour
         if (quickRestartButton != null) quickRestartButton.onClick.AddListener(OnQuickRestartClicked);
         if (restartButton != null) restartButton.onClick.AddListener(RestartGame);
 
-        // Hide game over panel on start
+        // Hide panels on start
         if (gameOverCanvasGroup != null)
         {
             gameOverCanvasGroup.alpha = 0f;
@@ -198,6 +191,9 @@ public class UIManager : MonoBehaviour
             gameOverCanvasGroup.blocksRaycasts = false;
             gameOverCanvasGroup.gameObject.SetActive(false);
         }
+        
+        if (settingsModal != null) settingsModal.SetActive(false);
+        if (howToPlayModal != null) howToPlayModal.SetActive(false);
     }
 
     private void Start()
@@ -393,6 +389,14 @@ public class UIManager : MonoBehaviour
         if (mainCamera != null && newState != GameState.GameOver)
         {
             mainCamera.DOColor(targetBgColor, bgTransitionDuration).SetUpdate(true);
+        }
+
+        if (newState == GameState.AITurn || newState == GameState.PlayerMovePhase || newState == GameState.Player2MovePhase)
+        {
+            if (AudioManager.Instance != null && AudioManager.Instance.turnSwitchClip != null)
+            {
+                AudioManager.Instance.PlaySFX(AudioManager.Instance.turnSwitchClip, 0.7f);
+            }
         }
 
         PlayBannerPunch();
@@ -685,71 +689,60 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    [ContextMenu("Test Open Settings")]
     public void OpenSettings()
     {
         if (settingsModal == null) return;
-        AudioManager.Instance?.PlayUIClickSound();
-        settingsModal.gameObject.SetActive(true);
-        settingsModal.alpha = 1f; // The CanvasGroup itself is fully visible, children will fade
-        settingsModal.interactable = true;
-        settingsModal.blocksRaycasts = true;
-
-        var bg = settingsModal.transform.Find("Bg")?.GetComponent<UnityEngine.UI.Image>();
-        var card = settingsModal.transform.Find("Card");
-
-        if (bg != null)
-        {
-            Color c = bg.color;
-            c.a = 0f;
-            bg.color = c;
-            bg.DOFade(0.6f, 0.2f);
-        }
-
-        if (card != null)
-        {
-            card.localScale = Vector3.zero;
-            card.DOScale(Vector3.one, 0.25f).SetEase(Ease.OutBack);
-        }
-
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySFX(AudioManager.Instance.modalOpenClip);
+        settingsModal.SetActive(true);
+        settingsModalCanvasGroup.alpha = 1;
+        settingsModalCanvasGroup.blocksRaycasts = true;
+        settingsCard.localScale = Vector3.zero;
+        settingsCard.DOScale(Vector3.one, 0.22f).SetEase(Ease.OutBack).SetUpdate(true);
         UpdateSettingsUI();
-    }
-
-    [ContextMenu("Test Game Over (Victory)")]
-    private void TestGameOverVictory()
-    {
-        ShowGameOver(true);
     }
 
     public void CloseSettings()
     {
         if (settingsModal == null) return;
         AudioManager.Instance?.PlayUIClickSound();
-        settingsModal.interactable = false;
+        settingsCard.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack).SetUpdate(true).OnComplete(() => {
+            settingsModalCanvasGroup.blocksRaycasts = false;
+            settingsModal.SetActive(false);
+            settingsCard.localScale = Vector3.one;
+        });
+    }
 
-        var bg = settingsModal.transform.Find("Bg")?.GetComponent<UnityEngine.UI.Image>();
-        var card = settingsModal.transform.Find("Card");
-
-        if (bg != null) bg.DOFade(0f, 0.18f);
-
-        if (card != null)
+    public void OpenHowToPlay()
+    {
+        if (howToPlayModal == null) return;
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySFX(AudioManager.Instance.modalOpenClip);
+        howToPlayModal.SetActive(true);
+        if (howToPlayCanvasGroup != null)
         {
-            card.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack).OnComplete(() =>
+            howToPlayCanvasGroup.alpha = 1;
+            howToPlayCanvasGroup.blocksRaycasts = true;
+        }
+        howToPlayCard.localScale = Vector3.zero;
+        howToPlayCard.DOScale(Vector3.one, 0.22f).SetEase(Ease.OutBack).SetUpdate(true);
+    }
+
+    public void CloseHowToPlay()
+    {
+        if (howToPlayModal == null) return;
+        AudioManager.Instance?.PlayUIClickSound();
+        howToPlayCard.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack).SetUpdate(true).OnComplete(() => {
+            if (howToPlayCanvasGroup != null)
             {
-                settingsModal.blocksRaycasts = false;
-                settingsModal.gameObject.SetActive(false);
-            });
-        }
-        else
-        {
-            settingsModal.blocksRaycasts = false;
-            settingsModal.gameObject.SetActive(false);
-        }
+                howToPlayCanvasGroup.blocksRaycasts = false;
+            }
+            howToPlayModal.SetActive(false);
+            howToPlayCard.localScale = Vector3.one;
+        });
     }
 
     public void ToggleSFX()
     {
-        AudioManager.Instance?.PlayUIClickSound();
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySFX(AudioManager.Instance.toggleClip);
         AudioManager.Instance?.ToggleSFX();
         PunchToggleUI("SfxToggleBtn");
         UpdateSettingsUI();
@@ -757,7 +750,7 @@ public class UIManager : MonoBehaviour
 
     public void ToggleMusic()
     {
-        AudioManager.Instance?.PlayUIClickSound();
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySFX(AudioManager.Instance.toggleClip);
         AudioManager.Instance?.ToggleMusic();
         PunchToggleUI("MusicToggleBtn");
         UpdateSettingsUI();
@@ -765,7 +758,7 @@ public class UIManager : MonoBehaviour
 
     public void ToggleHaptics()
     {
-        AudioManager.Instance?.PlayUIClickSound();
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySFX(AudioManager.Instance.toggleClip);
         AudioManager.Instance?.ToggleHaptics();
         PunchToggleUI("HapticsToggleBtn");
         UpdateSettingsUI();
@@ -773,8 +766,8 @@ public class UIManager : MonoBehaviour
 
     private void PunchToggleUI(string name)
     {
-        if (settingsModal == null) return;
-        var btn = settingsModal.transform.Find("Card/" + name);
+        if (settingsCard == null) return;
+        var btn = settingsCard.Find(name);
         if (btn != null)
         {
             btn.DOPunchScale(Vector3.one * buttonPunchScale, buttonPunchDuration);
@@ -787,14 +780,15 @@ public class UIManager : MonoBehaviour
         var am = AudioManager.Instance;
         if (am == null) return;
 
-        UpdateToggleVisuals("Card/SfxToggleBtn", "SFX: ON", "SFX: OFF", am.IsSFXEnabled);
-        UpdateToggleVisuals("Card/MusicToggleBtn", "MUSIC: ON", "MUSIC: OFF", am.IsMusicEnabled);
-        UpdateToggleVisuals("Card/HapticsToggleBtn", "VIBRATION: ON", "VIBRATION: OFF", am.IsHapticsEnabled);
+        UpdateToggleVisuals("SfxToggleBtn", "SFX: ON", "SFX: OFF", am.IsSFXEnabled);
+        UpdateToggleVisuals("MusicToggleBtn", "MUSIC: ON", "MUSIC: OFF", am.IsMusicEnabled);
+        UpdateToggleVisuals("HapticsToggleBtn", "VIBRATION: ON", "VIBRATION: OFF", am.IsHapticsEnabled);
     }
 
     private void UpdateToggleVisuals(string path, string textOn, string textOff, bool isOn)
     {
-        var btn = settingsModal.transform.Find(path);
+        if (settingsCard == null) return;
+        var btn = settingsCard.Find(path);
         if (btn == null) return;
 
         var tmp = btn.GetComponentInChildren<TextMeshProUGUI>();

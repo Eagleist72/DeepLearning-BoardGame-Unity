@@ -31,18 +31,25 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (UnityEngine.EventSystems.EventSystem.current != null && 
+            (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject() || 
+            (Input.touchCount > 0 && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId))))
+        {
+            return;
+        }
+
         bool inputDetected = false;
         Vector2 screenPosition = Vector2.zero;
 
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-        {
-            inputDetected = true;
-            screenPosition = Mouse.current.position.ReadValue();
-        }
-        else if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
+        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
         {
             inputDetected = true;
             screenPosition = Touchscreen.current.primaryTouch.position.ReadValue();
+        }
+        else if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            inputDetected = true;
+            screenPosition = Mouse.current.position.ReadValue();
         }
 
         if (inputDetected && !GameManager.Instance.isExecutingTurn)

@@ -50,6 +50,11 @@ public class GameManager : MonoBehaviour
             return;
         }
         Instance = this;
+
+        Application.targetFrameRate = 60;
+        QualitySettings.vSyncCount = 0;
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
+        Input.simulateMouseWithTouches = true;
     }
 
     private IEnumerator Start()

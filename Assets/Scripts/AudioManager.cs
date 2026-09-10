@@ -1,26 +1,38 @@
 using UnityEngine;
 
+public enum HapticType { Light, Medium, Heavy }
+
 /// <summary>
 /// Singleton AudioManager with zero-allocation AudioSource pooling.
-/// Pre-allocates AudioSource components on Awake to avoid runtime instantiation.
-/// All playback methods pull from the pool and return sources automatically when done.
 /// </summary>
 public class AudioManager : MonoBehaviour
 {
     public static AudioManager Instance { get; private set; }
 
-    [Header("References")]
-    [Tooltip("Shared GameSettings asset containing audio clips and volume configuration")]
+    [Header("Settings")]
     public GameSettings gameSettings;
 
-    // Pre-allocated pool of AudioSource components (no runtime instantiation)
+    [Header("UI SFX")]
+    public AudioClip buttonClickClip;
+    public AudioClip toggleClip;
+    public AudioClip modalOpenClip;
+
+    [Header("Gameplay SFX")]
+    public AudioClip pieceHopClip;
+    public AudioClip tileCollapseClip;
+    public AudioClip turnSwitchClip;
+
+    [Header("Game Over SFX")]
+    public AudioClip victoryJingleClip;
+    public AudioClip defeatJingleClip;
+
+    [Header("Background Music")]
+    public AudioClip bgmClip;
+
     private AudioSource[] audioSourcePool;
     private AudioSource musicSource;
-
-    // Round-robin index to distribute playback across the pool evenly
     private int nextSourceIndex;
 
-    // Settings State
     public bool IsSFXEnabled { get; private set; } = true;
     public bool IsMusicEnabled { get; private set; } = true;
     public bool IsHapticsEnabled { get; private set; } = true;
@@ -55,9 +67,30 @@ public class AudioManager : MonoBehaviour
         musicSource.volume = gameSettings != null ? gameSettings.masterVolume * 0.5f : 0.5f;
         musicSource.mute = !IsMusicEnabled;
         
-        // If there's a music clip in gameSettings, play it. 
-        // (Assuming you'll add it to GameSettings, or we just leave it ready)
-        // musicSource.Play();
+        if (bgmClip != null)
+        {
+            musicSource.clip = bgmClip;
+            musicSource.Play();
+        }
+    }
+
+    private void InitializeAudioSourcePool()
+    {
+        int poolSize = 5; // Reduced to 5 as requested
+        audioSourcePool = new AudioSource[poolSize];
+
+        for (int i = 0; i < poolSize; i++)
+        {
+            GameObject sourceObj = new GameObject($"PooledAudioSource_{i}");
+            sourceObj.transform.SetParent(transform);
+
+            AudioSource source = sourceObj.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.loop = false;
+            source.spatialBlend = 0f;
+
+            audioSourcePool[i] = source;
+        }
     }
 
     public void ToggleSFX()
@@ -65,11 +98,6 @@ public class AudioManager : MonoBehaviour
         IsSFXEnabled = !IsSFXEnabled;
         PlayerPrefs.SetInt("Setting_SFX", IsSFXEnabled ? 1 : 0);
         PlayerPrefs.Save();
-        
-        foreach (var source in audioSourcePool)
-        {
-            source.mute = !IsSFXEnabled;
-        }
     }
 
     public void ToggleMusic()
@@ -91,7 +119,7 @@ public class AudioManager : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    public void TriggerHaptic()
+    public void TriggerHaptic(HapticType type)
     {
         if (IsHapticsEnabled)
         {
@@ -101,117 +129,62 @@ public class AudioManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Pre-allocates AudioSource components as children of this GameObject.
-    /// Each source is configured for one-shot SFX playback (no looping, no spatial blend).
-    /// </summary>
-    private void InitializeAudioSourcePool()
+    // Fallback for previous calls
+    public void TriggerHaptic()
     {
-        int poolSize = gameSettings != null ? gameSettings.initialAudioSourcePoolSize : 10;
-        audioSourcePool = new AudioSource[poolSize];
-
-        for (int i = 0; i < poolSize; i++)
-        {
-            // Create a child GameObject to hold each AudioSource (keeps hierarchy clean)
-            GameObject sourceObj = new GameObject($"PooledAudioSource_{i}");
-            sourceObj.transform.SetParent(transform);
-
-            AudioSource source = sourceObj.AddComponent<AudioSource>();
-            source.playOnAwake = false;
-            source.mute = !IsSFXEnabled; // Apply initial SFX setting
-            source.loop = false;
-            source.spatialBlend = 0f; // 2D sound (UI/board game)
-
-            audioSourcePool[i] = source;
-        }
+        TriggerHaptic(HapticType.Light);
     }
 
-    /// <summary>
-    /// Plays a sound effect clip using a pooled AudioSource with optional volume and pitch variation.
-    /// Uses round-robin allocation — if all sources are busy, the oldest one is reused.
-    /// Zero GC allocations during playback.
-    /// </summary>
-    /// <param name="clip">The AudioClip to play. Null clips are silently ignored.</param>
-    /// <param name="volumeScale">Additional volume multiplier (0-1) on top of master/sfx volume.</param>
-    /// <param name="pitchVariation">Random pitch offset range for richer audio feel (e.g., 0.05 = ±5%).</param>
-    public void PlaySFX(AudioClip clip, float volumeScale = 1f, float pitchVariation = 0.05f)
+    public void PlaySFX(AudioClip clip, float volume = 1f, bool randomizePitch = true)
     {
-        if (clip == null || gameSettings == null) return;
+        if (clip == null || !IsSFXEnabled) return;
 
         AudioSource source = GetNextAudioSource();
+        float masterVol = gameSettings != null ? gameSettings.masterVolume * gameSettings.sfxVolume : 1f;
+        source.volume = masterVol * volume;
 
-        // Compute final volume: masterVolume * sfxVolume * per-call scale
-        source.volume = gameSettings.masterVolume * gameSettings.sfxVolume * volumeScale;
-
-        // Apply subtle pitch variation for organic feel
-        source.pitch = 1f + Random.Range(-pitchVariation, pitchVariation);
+        if (randomizePitch)
+        {
+            source.pitch = Random.Range(0.92f, 1.08f);
+        }
+        else
+        {
+            source.pitch = 1f;
+        }
 
         source.clip = clip;
         source.Play();
     }
 
-    /// <summary>
-    /// Plays the piece movement sound effect.
-    /// </summary>
+    // Keep legacy methods that might be called elsewhere, routing them to the new clip references
     public void PlayMoveSound()
     {
-        if (gameSettings != null)
-        {
-            PlaySFX(gameSettings.moveClip);
-        }
+        PlaySFX(pieceHopClip);
     }
 
-    /// <summary>
-    /// Plays the tile removal sound effect.
-    /// </summary>
     public void PlayTileRemoveSound()
     {
-        if (gameSettings != null)
-        {
-            PlaySFX(gameSettings.tileRemoveClip);
-        }
-        TriggerHaptic();
+        PlaySFX(tileCollapseClip);
+        TriggerHaptic(HapticType.Light);
     }
 
-    /// <summary>
-    /// Plays the UI click/selection sound effect.
-    /// </summary>
     public void PlayUIClickSound()
     {
-        if (gameSettings != null)
-        {
-            PlaySFX(gameSettings.uiClickClip);
-        }
+        PlaySFX(buttonClickClip);
     }
 
-    /// <summary>
-    /// Plays the victory sound effect (no pitch variation for fanfares).
-    /// </summary>
     public void PlayVictorySound()
     {
-        if (gameSettings != null)
-        {
-            PlaySFX(gameSettings.victoryClip, 1f, 0f);
-        }
-        TriggerHaptic();
+        PlaySFX(victoryJingleClip, 1f, false);
+        TriggerHaptic(HapticType.Medium);
     }
 
-    /// <summary>
-    /// Plays the defeat sound effect (no pitch variation for fanfares).
-    /// </summary>
     public void PlayDefeatSound()
     {
-        if (gameSettings != null)
-        {
-            PlaySFX(gameSettings.defeatClip, 1f, 0f);
-        }
+        PlaySFX(defeatJingleClip, 1f, false);
+        TriggerHaptic(HapticType.Medium);
     }
 
-    /// <summary>
-    /// Returns the next available AudioSource from the pool using round-robin allocation.
-    /// If all sources are currently playing, the next in rotation is reused (interrupted).
-    /// This guarantees zero allocation — no new AudioSource is ever created at runtime.
-    /// </summary>
     private AudioSource GetNextAudioSource()
     {
         AudioSource source = audioSourcePool[nextSourceIndex];
