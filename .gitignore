@@ -113,7 +113,7 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
-# Ignore agents.md
+# Agent configs and rules
+.agents/
+.agents
 agents.md
-AGENTS.md
-*agents.md
