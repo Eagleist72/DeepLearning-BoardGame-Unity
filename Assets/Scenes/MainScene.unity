@@ -7490,8 +7490,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AIManager
   onnxModelAsset: {fileID: 5022602860645237092, guid: 833e6dc31b008224d8446083d1fe3821, type: 3}
-  easyRandomWeight: 0.5
-  mediumTemperature: 0.5
 --- !u!1001 &8561664961440324228
 PrefabInstance:
   m_ObjectHideFlags: 0

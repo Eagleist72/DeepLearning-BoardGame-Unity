@@ -6,8 +6,9 @@
 
 ## Gameplay Showcase
 
-![Gameplay Showcase](docs/gameplay_demo.gif)
-*(Note: Placeholder for Gameplay Demo Video / Animated GIF)*
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/0c1329ce-c3d7-47b0-81fb-7b5ba7487aa1" width="280"></video>
+</div>
 
 ### Core Rules
 1. **Hop** to an adjacent tile.

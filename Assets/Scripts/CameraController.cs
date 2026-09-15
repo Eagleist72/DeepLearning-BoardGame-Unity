@@ -31,6 +31,13 @@ public class CameraController : MonoBehaviour
     [Tooltip("Easing curve used for camera sweeps")]
     [SerializeField] private Ease transitionEase = Ease.InOutCubic;
 
+    [Header("Viewport Framing")]
+    [Tooltip("Target aspect ratio (width / height) - typically 9:16")]
+    [SerializeField] private float targetAspect = 9f / 16f;
+    private float baseFOV;
+    private float baseOrthoSize;
+    private bool framingInitialized = false;
+
     // Cache to prevent floating point drift after multiple shakes
     private Vector3 originalLocalPosition;
     private Tween shakeTween;
@@ -54,6 +61,51 @@ public class CameraController : MonoBehaviour
         transform.position = menuPosition;
         transform.rotation = Quaternion.Euler(menuRotation);
         originalLocalPosition = transform.localPosition;
+
+        if (cam.orthographic)
+            baseOrthoSize = cam.orthographicSize;
+        else
+            baseFOV = cam.fieldOfView;
+            
+        framingInitialized = true;
+        AdjustViewport();
+    }
+    
+    private void Update()
+    {
+        if (framingInitialized)
+        {
+            AdjustViewport();
+        }
+    }
+
+    private void AdjustViewport()
+    {
+        float currentAspect = (float)Screen.width / Screen.height;
+        if (cam.orthographic)
+        {
+            if (currentAspect < targetAspect)
+            {
+                cam.orthographicSize = baseOrthoSize * (targetAspect / currentAspect);
+            }
+            else
+            {
+                cam.orthographicSize = baseOrthoSize;
+            }
+        }
+        else
+        {
+            if (currentAspect < targetAspect)
+            {
+                float radHFOV = 2f * Mathf.Atan(Mathf.Tan(baseFOV * Mathf.Deg2Rad * 0.5f) * targetAspect);
+                float newRadFOV = 2f * Mathf.Atan(Mathf.Tan(radHFOV * 0.5f) / currentAspect);
+                cam.fieldOfView = newRadFOV * Mathf.Rad2Deg;
+            }
+            else
+            {
+                cam.fieldOfView = baseFOV;
+            }
+        }
     }
 
     /// <summary>
