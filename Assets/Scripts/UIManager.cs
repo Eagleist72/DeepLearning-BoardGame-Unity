@@ -319,6 +319,15 @@ public class UIManager : MonoBehaviour
     /// Updates the turn status banner text, status dot color, and plays a punch animation.
     /// Called by GameManager/PlayerController on every game state transition.
     /// </summary>
+    public void SetTurnTextOverride(string text)
+    {
+        if (turnBannerText != null)
+        {
+            turnBannerText.text = text;
+            PlayBannerPunch();
+        }
+    }
+
     public void UpdateTurnStatus(GameState newState)
     {
         if (turnBannerText == null) return;

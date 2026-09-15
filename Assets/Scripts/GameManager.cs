@@ -54,7 +54,6 @@ public class GameManager : MonoBehaviour
         Application.targetFrameRate = 60;
         QualitySettings.vSyncCount = 0;
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
-        Input.simulateMouseWithTouches = true;
     }
 
     private IEnumerator Start()
@@ -182,6 +181,33 @@ public class GameManager : MonoBehaviour
             // Here we only animate the tile removal to finish the turn.
             AnimateTileRemovalAndFinishTurn(removePos);
         }
+    }
+
+    public void ExecuteAIMoveStep(Vector2Int movePos)
+    {
+        isExecutingTurn = true;
+        board[aiPos.x, aiPos.y] = 0;
+        board[movePos.x, movePos.y] = 1;
+        aiPos = movePos;
+
+        GridManager.Instance.ClearAllHighlights();
+        GameObject targetTile = GridManager.Instance.GetTileAt(movePos.x, movePos.y);
+        Vector3 targetWorldPos = targetTile.transform.position + Vector3.up * 0.5f;
+
+        AudioManager.Instance?.PlayMoveSound();
+        
+        aiPieceTransform.DOJump(targetWorldPos, gameSettings.jumpPower, 1, gameSettings.jumpDuration)
+            .SetEase(Ease.OutQuad)
+            .OnComplete(() =>
+            {
+                aiPieceTransform.DOPunchScale(new Vector3(0.15f, -0.15f, 0.15f), 0.2f);
+            });
+    }
+
+    public void ExecuteAIRemoveStep(Vector2Int removePos)
+    {
+        board[removePos.x, removePos.y] = -1;
+        AnimateTileRemovalAndFinishTurn(removePos);
     }
 
     private void AnimateTileRemovalAndFinishTurn(Vector2Int removePos)

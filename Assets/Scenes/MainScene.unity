@@ -5767,7 +5767,7 @@ MonoBehaviour:
   gameSettings: {fileID: 11400000, guid: 5405cc722b61fc34da6679965b6bcc41, type: 2}
   masterVolume: 1
   sfxVolume: 1
-  musicVolume: 0.378
+  musicVolume: 0.4
   buttonClickClip: {fileID: 8300000, guid: 22d4616e0103a5f408e5618e3a8c920d, type: 3}
   toggleClip: {fileID: 8300000, guid: 22d4616e0103a5f408e5618e3a8c920d, type: 3}
   modalOpenClip: {fileID: 0}

@@ -1,6 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using Unity.InferenceEngine; // Updated library name
+using Unity.InferenceEngine;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -10,21 +10,21 @@ public class AIManager : MonoBehaviour
     [Tooltip("Drag and drop the ai_brain.onnx model here")]
     [SerializeField] private ModelAsset onnxModelAsset;
 
-    [Header("AI Intelligence Tuning")]
-    [Range(0f, 1f)] [Tooltip("Probability of random moves when in EASY mode (0 = smart, 1 = purely random)")]
-    [SerializeField] private float easyRandomWeight = 0.5f;
-    
-    [Range(0.1f, 2.0f)] [Tooltip("Softmax temperature for MEDIUM mode (higher = more varied moves)")]
-    [SerializeField] private float mediumTemperature = 0.5f;
-
     private Model runtimeModel;
-    private Worker worker; // Using Worker instead of IWorker
+    private Worker worker;
     private bool isThinking = false;
+
+    // ── Difficulty Constants ──────────────────────────────────
+    // EASY: 45% chance of a completely random adjacent move
+    private const float EasyRandomChance = 0.45f;
+    // MEDIUM: Temperature for softmax sampling (higher = more exploratory)
+    private const float MediumTemperature = 1.2f;
+    // MEDIUM: Pool size for temperature sampling (top-N moves)
+    private const int MediumPoolSize = 5;
 
     private void Start()
     {
         runtimeModel = ModelLoader.Load(onnxModelAsset);
-        // Creating a Worker object directly instead of using WorkerFactory
         worker = new Worker(runtimeModel, BackendType.GPUCompute);
     }
 
@@ -45,8 +45,17 @@ public class AIManager : MonoBehaviour
     private IEnumerator ThinkAndPlay()
     {
         isThinking = true;
-        yield return new WaitForSeconds(GameManager.Instance.gameSettings.aiThinkingDelay);
 
+        // ── 1. Trigger UI: "Bot thinking..." + pulsing dot ──
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.UpdateTurnStatus(GameState.AITurn);
+        }
+
+        // ── 2. Humanized thinking delay (non-blocking coroutine yield) ──
+        yield return new WaitForSeconds(Random.Range(0.45f, 0.75f));
+
+        // ── 3. Enumerate all valid (move, remove) combinations ──
         List<MoveData> validMoves = GetAllValidCombinations(1);
 
         if (validMoves.Count == 0)
@@ -55,76 +64,130 @@ public class AIManager : MonoBehaviour
             yield break;
         }
 
-        MoveData selectedMove = validMoves[0];
+        // ── 4. Score each move via Sentis model inference ──
         AIDifficulty diff = GameManager.ActiveDifficulty;
+        List<KeyValuePair<MoveData, float>> scoredMoves = new List<KeyValuePair<MoveData, float>>();
 
-        // EASY: chance of making a completely random valid move
-        if (diff == AIDifficulty.Easy && Random.value < easyRandomWeight)
+        foreach (MoveData move in validMoves)
         {
-            selectedMove = validMoves[Random.Range(0, validMoves.Count)];
+            int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
+            float[] flatBoard = FlattenBoard(simulatedBoard);
+
+            // GC-safe tensor lifecycle: explicit using blocks with scoped disposal
+            using (var inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard))
+            {
+                worker.Schedule(inputTensor);
+
+                // DownloadToArray() synchronously copies output data to a managed float[]
+                using (var outputTensor = worker.PeekOutput() as Tensor<float>)
+                {
+                    float[] outputData = outputTensor.DownloadToArray();
+                    float score = outputData[0];
+                    scoredMoves.Add(new KeyValuePair<MoveData, float>(move, score));
+                }
+            }
+        }
+
+        // Sort descending by model score
+        scoredMoves.Sort((a, b) => b.Value.CompareTo(a.Value));
+
+        // ── 5. Select move based on difficulty ──
+        MoveData selectedMove = SelectMove(diff, validMoves, scoredMoves);
+
+        // ── 6. Execute the move/hop animation ──
+        GameManager.Instance.ExecuteAIMoveStep(selectedMove.movePos);
+        
+        // Wait for hop animation to complete
+        yield return new WaitForSeconds(GameManager.Instance.gameSettings.jumpDuration);
+
+        // ── 7. Tile Collapse Phase (Strategic Delay) ──
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.SetTurnTextOverride("Choosing tile...");
+        }
+
+        yield return new WaitForSeconds(Random.Range(0.35f, 0.55f));
+
+        // ── 8. Execute tile collapse ──
+        GameManager.Instance.ExecuteAIRemoveStep(selectedMove.removePos);
+    }
+
+    /// <summary>
+    /// Selects a move based on the current difficulty tier.
+    /// EASY:   45% random adjacent move, 55% pick from top-2 scored moves.
+    /// MEDIUM: Temperature sampling (T=1.2) over top-5 scored moves.
+    /// HARD:   Strict argmax — always picks the highest-scored move.
+    /// </summary>
+    private MoveData SelectMove(AIDifficulty diff, List<MoveData> validMoves, List<KeyValuePair<MoveData, float>> scoredMoves)
+    {
+        switch (diff)
+        {
+            case AIDifficulty.Easy:
+                return SelectEasyMove(validMoves, scoredMoves);
+
+            case AIDifficulty.Medium:
+                return SelectMediumMove(scoredMoves);
+
+            case AIDifficulty.Hard:
+            default:
+                // Argmax: the list is already sorted descending, index 0 is best
+                return scoredMoves[0].Key;
+        }
+    }
+
+    /// <summary>
+    /// EASY: 45% chance of a completely random valid move (forgiving mistakes).
+    ///       55% chance of picking randomly from the top-2 highest-probability moves.
+    /// </summary>
+    private MoveData SelectEasyMove(List<MoveData> validMoves, List<KeyValuePair<MoveData, float>> scoredMoves)
+    {
+        if (Random.value < EasyRandomChance)
+        {
+            // Pure random: any valid (move, remove) combination
+            return validMoves[Random.Range(0, validMoves.Count)];
         }
         else
         {
-            List<KeyValuePair<MoveData, float>> scoredMoves = new List<KeyValuePair<MoveData, float>>();
+            // Pick randomly from the top 2 scored moves
+            int topN = Mathf.Min(2, scoredMoves.Count);
+            return scoredMoves[Random.Range(0, topN)].Key;
+        }
+    }
 
-            foreach (MoveData move in validMoves)
+    /// <summary>
+    /// MEDIUM: Temperature-scaled softmax sampling over the top-5 moves.
+    /// T=1.2 produces balanced, competitive yet beatable play.
+    /// </summary>
+    private MoveData SelectMediumMove(List<KeyValuePair<MoveData, float>> scoredMoves)
+    {
+        int poolSize = Mathf.Min(MediumPoolSize, scoredMoves.Count);
+        float sumExp = 0f;
+        float[] expScores = new float[poolSize];
+
+        for (int i = 0; i < poolSize; i++)
+        {
+            float exp = Mathf.Exp(scoredMoves[i].Value / MediumTemperature);
+            expScores[i] = exp;
+            sumExp += exp;
+        }
+
+        float rand = Random.value * sumExp;
+        float cumulative = 0f;
+
+        for (int i = 0; i < poolSize; i++)
+        {
+            cumulative += expScores[i];
+            if (rand <= cumulative)
             {
-                int[,] simulatedBoard = SimulateMove(GameManager.Instance.GetBoardCopy(), 1, move.movePos, move.removePos);
-                float[] flatBoard = FlattenBoard(simulatedBoard);
-
-                using Tensor<float> inputTensor = new Tensor<float>(new TensorShape(1, 49), flatBoard);
-                worker.Schedule(inputTensor);
-
-                using Tensor<float> outputTensor = worker.PeekOutput() as Tensor<float>;
-                float[] outputData = outputTensor.DownloadToArray();
-                float score = outputData[0];
-
-                scoredMoves.Add(new KeyValuePair<MoveData, float>(move, score));
-            }
-
-            // Sort descending by score
-            scoredMoves.Sort((a, b) => b.Value.CompareTo(a.Value));
-
-            if (diff == AIDifficulty.Hard || diff == AIDifficulty.Easy)
-            {
-                // Hard mode (or the 50% 'smart' portion of Easy) picks the absolute best move.
-                selectedMove = scoredMoves[0].Key;
-            }
-            else if (diff == AIDifficulty.Medium)
-            {
-                // Medium: Softmax temperature sampling over top moves to add variance without being completely dumb
-                float temperature = mediumTemperature;
-                float sumExp = 0f;
-                
-                // Limit to top 5 moves to ensure it's not completely random
-                int poolSize = Mathf.Min(5, scoredMoves.Count);
-                List<float> expScores = new List<float>();
-
-                for (int i = 0; i < poolSize; i++)
-                {
-                    float exp = Mathf.Exp(scoredMoves[i].Value / temperature);
-                    expScores.Add(exp);
-                    sumExp += exp;
-                }
-
-                float rand = Random.value * sumExp;
-                float cumulative = 0f;
-                selectedMove = scoredMoves[0].Key; // fallback
-
-                for (int i = 0; i < poolSize; i++)
-                {
-                    cumulative += expScores[i];
-                    if (rand <= cumulative)
-                    {
-                        selectedMove = scoredMoves[i].Key;
-                        break;
-                    }
-                }
+                return scoredMoves[i].Key;
             }
         }
 
-        GameManager.Instance.ExecuteTurn(1, selectedMove.movePos, selectedMove.removePos);
+        // Fallback (floating-point edge case)
+        return scoredMoves[0].Key;
     }
+
+    // ── Board Evaluation Helpers ──────────────────────────────
 
     private struct MoveData
     {
