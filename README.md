@@ -4,7 +4,7 @@
 
 ![Unity](https://img.shields.io/badge/Unity-2023%2B-blue?logo=unity) ![URP](https://img.shields.io/badge/Render%20Pipeline-URP-lightgray) ![Sentis](https://img.shields.io/badge/AI-Unity%20Sentis-orange) ![DOTween](https://img.shields.io/badge/Animation-DOTween-yellow) ![C#](https://img.shields.io/badge/Language-C%23-239120) ![Performance](https://img.shields.io/badge/Performance-60%20FPS%20Mobile-brightgreen)
 
-## 🎮 Gameplay Showcase
+## Gameplay Showcase
 
 ![Gameplay Showcase](docs/gameplay_demo.gif)
 *(Note: Placeholder for Gameplay Demo Video / Animated GIF)*
@@ -14,13 +14,13 @@
 2. **Crumble:** The tile you just left crumbles into the abyss.
 3. **Trap** your opponent to claim the island!
 
-## ✨ Key Features
+## Key Features
 
 - **Game Modes:** Play Solo vs Neural AI (Easy, Medium, Hard tiers) or enjoy Local Pass & Play (2P) with a friend.
 - **Aesthetic UI/UX:** Soothing pastel Zen color palette, responsive 9-slice vector assets (PastelUI), and custom Pixeloid typography for a polished look.
 - **Dynamic Game Feel (Juice):** Features organic, humanized AI thinking delays, tactile haptics, pooled spatial SFX, and procedural DOTween camera and tile animations for an immersive experience.
 
-## 🏗️ Technical Architecture & Engineering Highlights
+## Technical Architecture & Engineering Highlights
 
 - **On-Device Neural AI (Unity Sentis):**
   - **Architecture:** Multi-Layer Perceptron Regressor (`MLPRegressor` via `scikit-learn`).
@@ -33,7 +33,7 @@
 - **Zero-Allocation SFX & Object Pooling:** Memory-safe audio management with pitch randomization and zero Garbage Collection (GC) spikes during intense tile destruction loops.
 - **Mobile Performance (60 FPS Locked):** Highly optimized URP pipeline including tight shadow cascades, 4x MSAA, disabled HDR, and zero-latency touch raycasting with UI bleed prevention.
 
-## 🧰 Tech Stack & Dependencies
+## Tech Stack & Dependencies
 
 | Category | Technology / Package |
 | :--- | :--- |
@@ -44,7 +44,7 @@
 | **UI Text** | TextMeshPro |
 | **Input** | New Input System |
 
-## 🚀 Controls & Getting Started
+## Controls & Getting Started
 
 ### Prerequisites
 - Unity 2023.x or higher with Android/iOS build support.
