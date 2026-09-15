@@ -22,7 +22,14 @@
 
 ## 🏗️ Technical Architecture & Engineering Highlights
 
-- **On-Device Neural AI (Unity Sentis):** Utilizes a custom-trained neural network exported via ONNX. Features Minimax self-play evaluation, heuristic territory control (Voronoi/Flood-fill), and temperature-sampled probabilistic inference.
+- **On-Device Neural AI (Unity Sentis):**
+  - **Architecture:** Multi-Layer Perceptron Regressor (`MLPRegressor` via `scikit-learn`).
+  - **Inference Pipeline:** Trained model exported directly to `.onnx` and executed on-device using `Unity Sentis` / `Unity Inference Engine`.
+  - **Input Representation:** Encodes current normalized board tile occupancy, relative positions, and adjacent degrees of freedom into a flat feature vector.
+  - **Decision & Difficulty Calibration:** Output predictions drive move selection with tiered logic:
+    - **Easy:** Probabilistic error injection with fallback neighbor hops.
+    - **Medium:** Temperature-scaled sampling over valid tile probabilities.
+    - **Hard:** Strict Argmax/Greedy selection of the model's highest-confidence output.
 - **Zero-Allocation SFX & Object Pooling:** Memory-safe audio management with pitch randomization and zero Garbage Collection (GC) spikes during intense tile destruction loops.
 - **Mobile Performance (60 FPS Locked):** Highly optimized URP pipeline including tight shadow cascades, 4x MSAA, disabled HDR, and zero-latency touch raycasting with UI bleed prevention.
 
